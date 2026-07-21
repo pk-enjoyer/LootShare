@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.splitmanager.views.components.PanelTourTest" tests="5" skipped="0" failures="0" errors="0" timestamp="2026-07-21T12:19:10" hostname="Loulord" time="0.009">
+  <properties/>
+  <testcase name="showsUpdateInfoOnceEvenWhenQuickTourDisabled" classname="com.splitmanager.views.components.PanelTourTest" time="0.003"/>
+  <testcase name="endingQuickTourDisablesQuickTour" classname="com.splitmanager.views.components.PanelTourTest" time="0.001"/>
+  <testcase name="endingPendingUpdateInfoStoresSeenVersionWithoutDisablingQuickTour" classname="com.splitmanager.views.components.PanelTourTest" time="0.001"/>
+  <testcase name="startingUpdateInfoCanHighlightAndScrollToFirstTarget" classname="com.splitmanager.views.components.PanelTourTest" time="0.002"/>
+  <testcase name="hidesWhenQuickTourDisabledAndUpdateInfoAlreadySeen" classname="com.splitmanager.views.components.PanelTourTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[Exception in thread "AWT-EventQueue-0" java.lang.NullPointerException: Cannot invoke "javax.swing.JComponent.getHeight()" because "this.highlighted" is null
+	at com.splitmanager.views.components.PanelTour.lambda$scrollToHighlighted$5(PanelTour.java:417)
+	at java.desktop/java.awt.event.InvocationEvent.dispatch(InvocationEvent.java:318)
+	at java.desktop/java.awt.EventQueue.dispatchEventImpl(EventQueue.java:773)
+	at java.desktop/java.awt.EventQueue$4.run(EventQueue.java:720)
+	at java.desktop/java.awt.EventQueue$4.run(EventQueue.java:714)
+	at java.base/java.security.AccessController.doPrivileged(AccessController.java:400)
+	at java.base/java.security.ProtectionDomain$JavaSecurityAccessImpl.doIntersectionPrivilege(ProtectionDomain.java:87)
+	at java.desktop/java.awt.EventQueue.dispatchEvent(EventQueue.java:742)
+	at java.desktop/java.awt.EventDispatchThread.pumpOneEventForFilters(EventDispatchThread.java:203)
+	at java.desktop/java.awt.EventDispatchThread.pumpEventsForFilter(EventDispatchThread.java:124)
+	at java.desktop/java.awt.EventDispatchThread.pumpEventsForHierarchy(EventDispatchThread.java:113)
+	at java.desktop/java.awt.EventDispatchThread.pumpEvents(EventDispatchThread.java:109)
+	at java.desktop/java.awt.EventDispatchThread.pumpEvents(EventDispatchThread.java:101)
+	at java.desktop/java.awt.EventDispatchThread.run(EventDispatchThread.java:90)
+]]></system-err>
+</testsuite>

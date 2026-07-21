@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.splitmanager.PaymentProcessorTest" tests="7" skipped="0" failures="0" errors="0" timestamp="2026-07-21T12:19:08" hostname="Loulord" time="0.002">
+  <properties/>
+  <testcase name="testComputeDirectPaymentsMultipleReceiversOnePayer" classname="com.splitmanager.PaymentProcessorTest" time="0.001"/>
+  <testcase name="testComputeDirectPaymentsUserScenario" classname="com.splitmanager.PaymentProcessorTest" time="0.0"/>
+  <testcase name="testComputeDirectPaymentsOneReceiverMultiplePayers" classname="com.splitmanager.PaymentProcessorTest" time="0.0"/>
+  <testcase name="testComputeDirectPaymentsEmpty" classname="com.splitmanager.PaymentProcessorTest" time="0.0"/>
+  <testcase name="testComputeDirectPaymentsUnbalanced" classname="com.splitmanager.PaymentProcessorTest" time="0.0"/>
+  <testcase name="testComputeDirectPaymentsComplex" classname="com.splitmanager.PaymentProcessorTest" time="0.0"/>
+  <testcase name="testComputeDirectPaymentsSimple" classname="com.splitmanager.PaymentProcessorTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

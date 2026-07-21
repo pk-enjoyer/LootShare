@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SplitThreadAdapter.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">community-lootshare</a> &gt; <a href="index.source.html" class="el_package">com.splitmanager.sessions</a> &gt; <span class="el_source">SplitThreadAdapter.java</span></div><h1>SplitThreadAdapter.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (c) 2025, pk-enjoyer
+ * SPDX-License-Identifier: BSD-2-Clause
+ */
+
+package com.splitmanager.sessions;
+
+import com.splitmanager.models.Session;
+import com.splitmanager.models.SplitEvent;
+import com.splitmanager.models.SplitSegment;
+import com.splitmanager.models.SplitThread;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * Converts between legacy mother/child Session rows and the canonical split-thread model.
+ */
+public final class SplitThreadAdapter
+{
+	private SplitThreadAdapter()
+	{
+	}
+
+	public static List&lt;SplitThread&gt; fromSessions(List&lt;Session&gt; sessions)
+	{
+<span class="fc" id="L29">		Map&lt;String, Session&gt; byId = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L30" title="All 2 branches covered.">		for (Session session : safeSessions(sessions))</span>
+		{
+<span class="pc bpc" id="L32" title="1 of 4 branches missed.">			if (session != null &amp;&amp; session.getId() != null)</span>
+			{
+<span class="fc" id="L34">				byId.put(session.getId(), session);</span>
+			}
+<span class="fc" id="L36">		}</span>
+
+<span class="fc" id="L38">		List&lt;SplitThread&gt; threads = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L39" title="All 2 branches covered.">		for (Session session : byId.values())</span>
+		{
+<span class="fc bfc" id="L41" title="All 2 branches covered.">			if (session.getMotherId() != null)</span>
+			{
+<span class="fc" id="L43">				continue;</span>
+			}
+<span class="fc" id="L45">			SplitThread thread = new SplitThread(session.getId(), session.getStart());</span>
+<span class="fc" id="L46">			thread.setEnd(session.getEnd());</span>
+<span class="fc" id="L47">			thread.setPluginVersion(session.getPluginVersion());</span>
+<span class="fc" id="L48">			thread.setSettlementConfigAtStart(session.getSettlementConfigAtStart());</span>
+<span class="fc" id="L49">			thread.setSettlementConfigAtEnd(session.getSettlementConfigAtEnd());</span>
+<span class="fc" id="L50">			thread.setAltMappingAtStart(session.getAltMappingAtStart());</span>
+<span class="fc" id="L51">			thread.setAltMappingAtEnd(session.getAltMappingAtEnd());</span>
+<span class="fc bfc" id="L52" title="All 2 branches covered.">			for (Session child : byId.values())</span>
+			{
+<span class="fc bfc" id="L54" title="All 2 branches covered.">				if (!session.getId().equals(child.getMotherId()))</span>
+				{
+<span class="fc" id="L56">					continue;</span>
+				}
+<span class="fc" id="L58">				SplitSegment segment = new SplitSegment(child.getId(), child.getStart());</span>
+<span class="fc" id="L59">				segment.setEnd(child.getEnd());</span>
+<span class="fc" id="L60">				segment.getRoster().addAll(child.getPlayers());</span>
+<span class="fc bfc" id="L61" title="All 2 branches covered.">				for (SplitEvent event : child.getEvents())</span>
+				{
+<span class="pc bpc" id="L63" title="1 of 2 branches missed.">					if (event != null)</span>
+					{
+<span class="fc" id="L65">						segment.getEvents().add(copyEventForSession(event, child.getId()));</span>
+					}
+<span class="fc" id="L67">				}</span>
+<span class="fc" id="L68">				thread.getSegments().add(segment);</span>
+<span class="fc" id="L69">			}</span>
+<span class="fc" id="L70">			threads.add(thread);</span>
+<span class="fc" id="L71">		}</span>
+<span class="fc" id="L72">		return threads;</span>
+	}
+
+	public static List&lt;Session&gt; toSessions(List&lt;SplitThread&gt; threads)
+	{
+<span class="fc" id="L77">		List&lt;Session&gt; sessions = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L78" title="All 2 branches covered.">		if (threads == null)</span>
+		{
+<span class="fc" id="L80">			return sessions;</span>
+		}
+<span class="fc bfc" id="L82" title="All 2 branches covered.">		for (SplitThread thread : threads)</span>
+		{
+<span class="pc bpc" id="L84" title="1 of 6 branches missed.">			if (thread == null || thread.getId() == null || thread.getStart() == null)</span>
+			{
+<span class="nc" id="L86">				continue;</span>
+			}
+<span class="fc" id="L88">			Session mother = new Session(thread.getId(), thread.getStart(), null);</span>
+<span class="fc" id="L89">			mother.setEnd(thread.getEnd());</span>
+<span class="fc" id="L90">			mother.setPluginVersion(thread.getPluginVersion());</span>
+<span class="fc" id="L91">			mother.setSettlementConfigAtStart(thread.getSettlementConfigAtStart());</span>
+<span class="fc" id="L92">			mother.setSettlementConfigAtEnd(thread.getSettlementConfigAtEnd());</span>
+<span class="fc" id="L93">			mother.setAltMappingAtStart(thread.getAltMappingAtStart());</span>
+<span class="fc" id="L94">			mother.setAltMappingAtEnd(thread.getAltMappingAtEnd());</span>
+<span class="fc" id="L95">			sessions.add(mother);</span>
+<span class="fc bfc" id="L96" title="All 2 branches covered.">			for (SplitSegment segment : thread.getSegments())</span>
+			{
+<span class="pc bpc" id="L98" title="1 of 6 branches missed.">				if (segment == null || segment.getId() == null || segment.getStart() == null)</span>
+				{
+<span class="nc" id="L100">					continue;</span>
+				}
+<span class="fc" id="L102">				Session child = new Session(segment.getId(), segment.getStart(), thread.getId());</span>
+<span class="fc" id="L103">				child.setEnd(segment.getEnd());</span>
+<span class="fc" id="L104">				child.setPluginVersion(thread.getPluginVersion());</span>
+<span class="fc" id="L105">				child.getPlayers().addAll(segment.getRoster());</span>
+<span class="fc bfc" id="L106" title="All 2 branches covered.">				for (SplitEvent event : segment.getEvents())</span>
+				{
+<span class="fc bfc" id="L108" title="All 2 branches covered.">					if (event != null)</span>
+					{
+<span class="fc" id="L110">						child.getEvents().add(copyEventForSession(event, child.getId()));</span>
+					}
+<span class="fc" id="L112">				}</span>
+<span class="fc" id="L113">				sessions.add(child);</span>
+<span class="fc" id="L114">			}</span>
+<span class="fc" id="L115">		}</span>
+<span class="fc" id="L116">		return sessions;</span>
+	}
+
+	private static List&lt;Session&gt; safeSessions(List&lt;Session&gt; sessions)
+	{
+<span class="pc bpc" id="L121" title="1 of 2 branches missed.">		return sessions == null ? new ArrayList&lt;&gt;() : sessions;</span>
+	}
+
+	private static SplitEvent copyEventForSession(SplitEvent event, String sessionId)
+	{
+<span class="fc" id="L126">		SplitEvent copy = new SplitEvent(sessionId, event.getPlayer(), event.getAmount(), event.getAt());</span>
+<span class="fc" id="L127">		copy.setType(event.getType());</span>
+<span class="fc" id="L128">		return copy;</span>
+	}
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

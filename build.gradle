@@ -1,0 +1,217 @@
+plugins {
+	id 'java'
+	id 'jacoco'
+}
+
+repositories {
+	mavenLocal()
+	maven {
+		url = 'https://repo.runelite.net'
+		content {
+			includeGroupByRegex("net\\.runelite.*")
+		}
+	}
+	mavenCentral()
+}
+
+def runeLiteVersion = 'latest.release'
+
+dependencies {
+	compileOnly group: 'net.runelite', name:'client', version: runeLiteVersion
+	compileOnly group: 'net.runelite', name:'flatlaf-extras', version: '3.2.5-rl4'
+
+	compileOnly 'org.projectlombok:lombok:1.18.30'
+	annotationProcessor 'org.projectlombok:lombok:1.18.30'
+
+	testImplementation 'junit:junit:4.12'
+	testImplementation 'org.mockito:mockito-core:4.11.0'
+	testImplementation group: 'net.runelite', name:'client', version: runeLiteVersion
+	testImplementation group: 'net.runelite', name:'jshell', version: runeLiteVersion
+}
+
+sourceSets {
+	runelitePatch {
+		java.srcDir 'src/runelitePatch/java'
+		compileClasspath += configurations.testRuntimeClasspath
+	}
+}
+
+group = 'com.communitylootshare'
+version = '4.0.0'
+
+tasks.withType(JavaCompile).configureEach {
+	options.encoding = 'UTF-8'
+	options.release.set(11)
+}
+
+jacoco {
+	toolVersion = '0.8.12'
+}
+
+def jacocoUnitTestExcludes = [
+	'com/splitmanager/ManagerPlugin*',
+	'com/splitmanager/ManagerPanel*',
+	'com/splitmanager/PluginConfig*',
+	'com/splitmanager/controllers/**',
+	'com/splitmanager/models/SplitEvent*',
+	'com/splitmanager/models/PendingValue*',
+	'com/splitmanager/models/PlayerMetrics*',
+	'com/splitmanager/models/Transfer*',
+	'com/splitmanager/ui/**',
+	'com/splitmanager/utils/ChatStatusOverlay*',
+	'com/splitmanager/views/**'
+]
+
+def jacocoUiCoverageIncludes = [
+	'com/splitmanager/controllers/PanelController*',
+	'com/splitmanager/views/HistoryTableModel*',
+	'com/splitmanager/views/HistoryEditorPanel*'
+]
+
+test {
+	systemProperty 'java.awt.headless', 'true'
+	finalizedBy jacocoTestReport
+}
+
+jacocoTestReport {
+	dependsOn test
+	classDirectories.setFrom(files(classDirectories.files.collect {
+		fileTree(dir: it, exclude: jacocoUnitTestExcludes)
+	}))
+	reports {
+		xml.required = true
+		html.required = true
+	}
+}
+
+jacocoTestCoverageVerification {
+	dependsOn test
+	classDirectories.setFrom(files(classDirectories.files.collect {
+		fileTree(dir: it, exclude: jacocoUnitTestExcludes)
+	}))
+	violationRules {
+		rule {
+			limit {
+				counter = 'LINE'
+				value = 'COVEREDRATIO'
+				minimum = 0.95
+			}
+		}
+	}
+}
+
+tasks.register('jacocoUiTestReport', JacocoReport) {
+	dependsOn test
+	sourceDirectories.setFrom(files(sourceSets.main.allSource.srcDirs))
+	classDirectories.setFrom(files(sourceSets.main.output.classesDirs.files.collect {
+		fileTree(dir: it, include: jacocoUiCoverageIncludes)
+	}))
+	executionData.setFrom(layout.buildDirectory.file('jacoco/test.exec'))
+	reports {
+		xml.required = true
+		html.required = true
+		html.outputLocation = layout.buildDirectory.dir('reports/jacoco/uiTest/html')
+		xml.outputLocation = layout.buildDirectory.file('reports/jacoco/uiTest/jacocoUiTestReport.xml')
+	}
+}
+
+tasks.register('jacocoUiCoverageVerification', JacocoCoverageVerification) {
+	dependsOn test
+	classDirectories.setFrom(files(sourceSets.main.output.classesDirs.files.collect {
+		fileTree(dir: it, include: jacocoUiCoverageIncludes)
+	}))
+	executionData.setFrom(layout.buildDirectory.file('jacoco/test.exec'))
+	violationRules {
+		rule {
+			limit {
+				counter = 'LINE'
+				value = 'COVEREDRATIO'
+				minimum = 0.90
+			}
+		}
+	}
+}
+
+check.dependsOn jacocoTestCoverageVerification
+check.dependsOn tasks.named('jacocoUiCoverageVerification')
+
+def isRuneLiteClientJar = { File file ->
+	file.name ==~ /client-\d+\.\d+\.\d+(\.\d+)?(-\d{8}\.\d{6}-\d+)?\.jar/ &&
+		file.absolutePath.contains('/net.runelite/client/')
+}
+
+def runeLiteClientJar = {
+	configurations.testRuntimeClasspath.files.find { file ->
+		isRuneLiteClientJar(file)
+	}
+}
+
+tasks.register('patchedRuneliteClientJar', Jar) {
+	dependsOn configurations.testRuntimeClasspath
+	dependsOn tasks.named('compileRunelitePatchJava')
+	archiveClassifier.set('runelite-client-patched')
+	duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+	from {
+		def clientJar = runeLiteClientJar()
+		if (clientJar == null) {
+			throw new GradleException('Unable to find RuneLite client jar on testRuntimeClasspath')
+		}
+		zipTree(clientJar)
+	} {
+		// The RuneLite client artifact is signed.  We merge it with the local
+		// development patch, so retain no signing metadata; otherwise classes in
+		// net.runelite.client.externalplugins get mixed signer information.
+		exclude 'META-INF/**'
+		exclude 'net/runelite/client/externalplugins/ExternalPluginManager.class'
+	}
+	from sourceSets.runelitePatch.output
+}
+
+tasks.register('run', JavaExec) {
+	group = 'runelite'
+	description = 'Run RuneLite with Auto Split Manager loaded in developer mode.'
+	dependsOn tasks.named('patchedRuneliteClientJar')
+	classpath = files(
+		sourceSets.test.output,
+		sourceSets.main.output,
+		tasks.named('patchedRuneliteClientJar'),
+		configurations.testRuntimeClasspath.filter { file -> !isRuneLiteClientJar(file) }
+	)
+	mainClass.set('com.splitmanager.PluginTest')
+	args '--developer-mode', '--debug'
+}
+
+tasks.register('uiPreview', JavaExec) {
+	group = 'verification'
+	description = 'Open the Auto Split Manager Swing UI with local stub data and no RuneLite client.'
+	dependsOn tasks.named('testClasses')
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass.set('com.splitmanager.views.UiPreview')
+	jvmArgs '-Djava.awt.headless=false'
+}
+
+tasks.register('shadowJar', Jar) {
+	dependsOn configurations.testRuntimeClasspath
+	manifest {
+		attributes('Main-Class': 'com.splitmanager.PluginTest', 'Multi-Release': true)
+	}
+
+	duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+	from sourceSets.main.output
+	from sourceSets.test.output
+	from {
+		configurations.testRuntimeClasspath.collect { file ->
+			file.isDirectory() ? file : zipTree(file)
+		}
+	}
+
+	exclude 'META-INF/INDEX.LIST'
+	exclude 'META-INF/*.SF'
+	exclude 'META-INF/*.DSA'
+	exclude 'META-INF/*.RSA'
+	exclude '**/module-info.class'
+
+	group = BasePlugin.BUILD_GROUP
+	archiveClassifier.set('shadow')
+	archiveFileName.set("${rootProject.name}-${project.version}-all.jar")
+}

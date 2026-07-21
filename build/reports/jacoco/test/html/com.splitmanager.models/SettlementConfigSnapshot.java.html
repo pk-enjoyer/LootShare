@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SettlementConfigSnapshot.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">community-lootshare</a> &gt; <a href="index.source.html" class="el_package">com.splitmanager.models</a> &gt; <span class="el_source">SettlementConfigSnapshot.java</span></div><h1>SettlementConfigSnapshot.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (c) 2025, pk-enjoyer
+ * SPDX-License-Identifier: BSD-2-Clause
+ */
+
+package com.splitmanager.models;
+
+import lombok.Getter;
+import lombok.Setter;
+
+/**
+ * Captures config values that affect settlement math for historical context.
+ */
+@Getter
+@Setter
+public class SettlementConfigSnapshot
+{
+	private boolean accountForGeTax;
+	private String geTaxMinimumValue;
+	private double geTaxPercent;
+	private String geTaxMaxPerLoot;
+
+	public SettlementConfigSnapshot(boolean accountForGeTax,
+	                                String geTaxMinimumValue,
+	                                double geTaxPercent,
+	                                String geTaxMaxPerLoot)
+<span class="fc" id="L27">	{</span>
+<span class="fc" id="L28">		this.accountForGeTax = accountForGeTax;</span>
+<span class="fc" id="L29">		this.geTaxMinimumValue = geTaxMinimumValue;</span>
+<span class="fc" id="L30">		this.geTaxPercent = geTaxPercent;</span>
+<span class="fc" id="L31">		this.geTaxMaxPerLoot = geTaxMaxPerLoot;</span>
+<span class="fc" id="L32">	}</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

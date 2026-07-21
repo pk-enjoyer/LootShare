@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.splitmanager.FormatsTest" tests="11" skipped="0" failures="0" errors="0" timestamp="2026-07-21T12:19:06" hostname="Loulord" time="0.765">
+  <properties/>
+  <testcase name="testStringToValueParsesSupportedSuffixes" classname="com.splitmanager.FormatsTest" time="0.724"/>
+  <testcase name="testValueToStringUsesConfiguredDefaultSuffix" classname="com.splitmanager.FormatsTest" time="0.008"/>
+  <testcase name="testFormatUpdates" classname="com.splitmanager.FormatsTest" time="0.022"/>
+  <testcase name="testStringToValueRejectsOverflowAsParseException" classname="com.splitmanager.FormatsTest" time="0.001"/>
+  <testcase name="testStringToValueRejectsInvalidInput" classname="com.splitmanager.FormatsTest" time="0.001"/>
+  <testcase name="testValueToStringDisplaysCommittedRawCoinsWithSuffix" classname="com.splitmanager.FormatsTest" time="0.001"/>
+  <testcase name="testToSuffixStringFormatsCoinsWithTargetSuffix" classname="com.splitmanager.FormatsTest" time="0.001"/>
+  <testcase name="testStringToValueUsesConfiguredDefaultWhenSuffixIsMissing" classname="com.splitmanager.FormatsTest" time="0.001"/>
+  <testcase name="testStringToValueFallsBackToCoinsWithoutConfig" classname="com.splitmanager.FormatsTest" time="0.0"/>
+  <testcase name="testStringAmountToLongAmountUsesProvidedOrStaticConfig" classname="com.splitmanager.FormatsTest" time="0.001"/>
+  <testcase name="testValueToStringAndSharedFormatters" classname="com.splitmanager.FormatsTest" time="0.001"/>
+  <system-out><![CDATA[2026-07-21 14:19:06 CEST [Test worker] WARN  com.splitmanager.utils.Formats - Invalid time format: INVALID_PATTERN, falling back to default
+2026-07-21 14:19:07 CEST [Test worker] WARN  com.splitmanager.utils.Formats - Invalid date format: INVALID_DATE_PATTERN, falling back to default
+]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

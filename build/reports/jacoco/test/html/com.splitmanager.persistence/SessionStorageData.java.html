@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SessionStorageData.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">community-lootshare</a> &gt; <a href="index.source.html" class="el_package">com.splitmanager.persistence</a> &gt; <span class="el_source">SessionStorageData.java</span></div><h1>SessionStorageData.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (c) 2025, pk-enjoyer
+ * SPDX-License-Identifier: BSD-2-Clause
+ */
+
+package com.splitmanager.persistence;
+
+import com.splitmanager.models.Session;
+import com.splitmanager.models.SplitThread;
+import java.util.ArrayList;
+import java.util.List;
+import lombok.Getter;
+import lombok.Setter;
+
+<span class="fc" id="L15">public class SessionStorageData</span>
+{
+	public static final int CURRENT_SCHEMA_VERSION = 3;
+
+<span class="fc" id="L19">	@Setter</span>
+	@Getter
+	private int schemaVersion = CURRENT_SCHEMA_VERSION;
+	@Setter
+	@Getter
+	private String currentSessionId;
+	@Setter
+	@Getter
+	private boolean historyLoaded;
+<span class="fc" id="L28">	private List&lt;Session&gt; sessions = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L29">	private List&lt;SplitThread&gt; threads = new ArrayList&lt;&gt;();</span>
+
+	public List&lt;Session&gt; getSessions()
+	{
+<span class="fc bfc" id="L33" title="All 2 branches covered.">		if (sessions == null)</span>
+		{
+<span class="fc" id="L35">			sessions = new ArrayList&lt;&gt;();</span>
+		}
+<span class="fc" id="L37">		return sessions;</span>
+	}
+
+	public void setSessions(List&lt;Session&gt; sessions)
+	{
+<span class="pc bpc" id="L42" title="1 of 2 branches missed.">		this.sessions = sessions == null ? new ArrayList&lt;&gt;() : sessions;</span>
+<span class="fc" id="L43">	}</span>
+
+	public List&lt;SplitThread&gt; getThreads()
+	{
+<span class="fc bfc" id="L47" title="All 2 branches covered.">		if (threads == null)</span>
+		{
+<span class="fc" id="L49">			threads = new ArrayList&lt;&gt;();</span>
+		}
+<span class="fc" id="L51">		return threads;</span>
+	}
+
+	public void setThreads(List&lt;SplitThread&gt; threads)
+	{
+<span class="pc bpc" id="L56" title="1 of 2 branches missed.">		this.threads = threads == null ? new ArrayList&lt;&gt;() : threads;</span>
+<span class="fc" id="L57">	}</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

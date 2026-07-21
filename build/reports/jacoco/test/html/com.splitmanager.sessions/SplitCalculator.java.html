@@ -1,0 +1,228 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SplitCalculator.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">community-lootshare</a> &gt; <a href="index.source.html" class="el_package">com.splitmanager.sessions</a> &gt; <span class="el_source">SplitCalculator.java</span></div><h1>SplitCalculator.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (c) 2025, pk-enjoyer
+ * SPDX-License-Identifier: BSD-2-Clause
+ */
+
+package com.splitmanager.sessions;
+
+import com.splitmanager.models.SplitEvent;
+import com.splitmanager.models.PlayerMetrics;
+import com.splitmanager.models.Session;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import lombok.Getter;
+
+/**
+ * Pure split calculation for a session thread.
+ */
+<span class="fc" id="L24">public class SplitCalculator</span>
+{
+	public List&lt;PlayerMetrics&gt; compute(Session selectedSession,
+	                                   List&lt;Session&gt; thread,
+	                                   Set&lt;String&gt; knownPlayers,
+	                                   boolean includeNonActivePlayers)
+	{
+<span class="fc" id="L31">		return compute(selectedSession, thread, knownPlayers, includeNonActivePlayers, GeTaxSettings.disabled());</span>
+	}
+
+	public List&lt;PlayerMetrics&gt; compute(Session selectedSession,
+	                                   List&lt;Session&gt; thread,
+	                                   Set&lt;String&gt; knownPlayers,
+	                                   boolean includeNonActivePlayers,
+	                                   GeTaxSettings geTaxSettings)
+	{
+<span class="fc bfc" id="L40" title="All 2 branches covered.">		if (selectedSession == null)</span>
+		{
+<span class="fc" id="L42">			return List.of();</span>
+		}
+
+<span class="pc bpc" id="L45" title="1 of 2 branches missed.">		List&lt;Session&gt; safeThread = thread == null ? List.of() : thread;</span>
+<span class="pc bpc" id="L46" title="1 of 2 branches missed.">		Set&lt;String&gt; safeKnownPlayers = knownPlayers == null ? Set.of() : knownPlayers;</span>
+<span class="pc bpc" id="L47" title="1 of 2 branches missed.">		GeTaxSettings safeGeTaxSettings = geTaxSettings == null ? GeTaxSettings.disabled() : geTaxSettings;</span>
+
+<span class="fc" id="L49">		LinkedHashSet&lt;String&gt; includedPlayers = new LinkedHashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L50" title="All 2 branches covered.">		if (includeNonActivePlayers)</span>
+		{
+<span class="fc" id="L52">			includedPlayers.addAll(safeKnownPlayers);</span>
+<span class="fc bfc" id="L53" title="All 2 branches covered.">			for (Session part : safeThread)</span>
+			{
+<span class="fc" id="L55">				includedPlayers.addAll(part.getPlayers());</span>
+<span class="fc" id="L56">			}</span>
+		}
+		else
+		{
+<span class="fc" id="L60">			includedPlayers.addAll(selectedSession.getPlayers());</span>
+		}
+
+<span class="fc" id="L63">		Map&lt;String, Long&gt; totals = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L64">		Map&lt;String, Long&gt; splits = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L65" title="All 2 branches covered.">		for (String player : includedPlayers)</span>
+		{
+<span class="fc" id="L67">			totals.put(player, 0L);</span>
+<span class="fc" id="L68">			splits.put(player, 0L);</span>
+<span class="fc" id="L69">		}</span>
+
+<span class="fc bfc" id="L71" title="All 2 branches covered.">		for (Session part : safeThread)</span>
+		{
+<span class="fc" id="L73">			applySessionSegment(part, totals, splits, safeGeTaxSettings);</span>
+<span class="fc" id="L74">		}</span>
+
+<span class="fc" id="L76">		List&lt;PlayerMetrics&gt; out = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L77" title="All 2 branches covered.">		for (String player : includedPlayers)</span>
+		{
+<span class="fc" id="L79">			boolean activeNow = selectedSession.getPlayers().stream().anyMatch(active -&gt; active.equalsIgnoreCase(player));</span>
+<span class="fc" id="L80">			long total = totals.getOrDefault(player, 0L);</span>
+<span class="fc" id="L81">			long split = splits.getOrDefault(player, 0L);</span>
+
+<span class="fc bfc" id="L83" title="All 6 branches covered.">			if (!activeNow &amp;&amp; total == 0L &amp;&amp; split == 0L)</span>
+			{
+<span class="fc" id="L85">				continue;</span>
+			}
+
+<span class="fc" id="L88">			out.add(new PlayerMetrics(player, total, split, activeNow));</span>
+<span class="fc" id="L89">		}</span>
+<span class="fc" id="L90">		return out;</span>
+	}
+
+	private void applySessionSegment(Session part,
+	                                 Map&lt;String, Long&gt; totals,
+	                                 Map&lt;String, Long&gt; splits,
+	                                 GeTaxSettings geTaxSettings)
+	{
+<span class="fc" id="L98">		List&lt;String&gt; roster = new ArrayList&lt;&gt;(part.getPlayers());</span>
+<span class="fc bfc" id="L99" title="All 2 branches covered.">		if (roster.isEmpty())</span>
+		{
+<span class="fc" id="L101">			return;</span>
+		}
+
+<span class="fc" id="L104">		Map&lt;String, Long&gt; perSessionTotals = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L105" title="All 2 branches covered.">		for (String player : roster)</span>
+		{
+<span class="fc" id="L107">			perSessionTotals.put(player, 0L);</span>
+<span class="fc" id="L108">		}</span>
+
+<span class="fc bfc" id="L110" title="All 2 branches covered.">		for (SplitEvent event : part.getEvents())</span>
+		{
+<span class="fc bfc" id="L112" title="All 4 branches covered.">			if (!event.isLootEvent() || event.getAmount() == null)</span>
+			{
+<span class="fc" id="L114">				continue;</span>
+			}
+<span class="fc" id="L116">			long lootAmount = event.getAmount();</span>
+<span class="fc" id="L117">			long splitAmount = computeSplitAmount(lootAmount, geTaxSettings);</span>
+<span class="fc" id="L118">			String rosterPlayer = findRosterPlayer(roster, event.getPlayer());</span>
+<span class="fc bfc" id="L119" title="All 2 branches covered.">			if (rosterPlayer != null)</span>
+			{
+<span class="fc" id="L121">				perSessionTotals.computeIfPresent(rosterPlayer, (player, value) -&gt; value + splitAmount);</span>
+			}
+<span class="fc" id="L123">		}</span>
+
+<span class="fc" id="L125">		long sessionAverage = sum(perSessionTotals) / perSessionTotals.size();</span>
+<span class="fc bfc" id="L126" title="All 2 branches covered.">		for (Map.Entry&lt;String, Long&gt; entry : perSessionTotals.entrySet())</span>
+		{
+<span class="fc" id="L128">			String player = entry.getKey();</span>
+<span class="fc" id="L129">			long playerTotalThisSession = entry.getValue();</span>
+<span class="fc bfc" id="L130" title="All 2 branches covered.">			if (totals.containsKey(player))</span>
+			{
+<span class="fc" id="L132">				Long currentTotal = totals.get(player);</span>
+<span class="pc bpc" id="L133" title="1 of 2 branches missed.">				totals.put(player, (currentTotal == null ? 0L : currentTotal) + playerTotalThisSession);</span>
+			}
+<span class="fc bfc" id="L135" title="All 2 branches covered.">			if (splits.containsKey(player))</span>
+			{
+<span class="fc" id="L137">				Long currentSplit = splits.get(player);</span>
+<span class="pc bpc" id="L138" title="1 of 2 branches missed.">				splits.put(player, (currentSplit == null ? 0L : currentSplit) + sessionAverage - playerTotalThisSession);</span>
+			}
+<span class="fc" id="L140">		}</span>
+<span class="fc" id="L141">	}</span>
+
+	public static long computeSplitAmount(long lootAmount, GeTaxSettings geTaxSettings)
+	{
+<span class="pc bpc" id="L145" title="1 of 2 branches missed.">		GeTaxSettings safeSettings = geTaxSettings == null ? GeTaxSettings.disabled() : geTaxSettings;</span>
+<span class="fc bfc" id="L146" title="All 4 branches covered.">		if (!safeSettings.enabled || lootAmount &lt; safeSettings.minimumValue)</span>
+		{
+<span class="fc" id="L148">			return lootAmount;</span>
+		}
+
+<span class="fc" id="L151">		long geTax = computeGeTax(lootAmount, safeSettings);</span>
+<span class="fc bfc" id="L152" title="All 2 branches covered.">		if (geTax &lt;= 0L)</span>
+		{
+<span class="fc" id="L154">			return lootAmount;</span>
+		}
+
+<span class="fc" id="L157">		return Math.max(lootAmount - geTax, 0L);</span>
+	}
+
+	private String findRosterPlayer(List&lt;String&gt; roster, String player)
+	{
+<span class="fc bfc" id="L162" title="All 2 branches covered.">		if (player == null)</span>
+		{
+<span class="fc" id="L164">			return null;</span>
+		}
+<span class="fc bfc" id="L166" title="All 2 branches covered.">		for (String rosterPlayer : roster)</span>
+		{
+<span class="pc bpc" id="L168" title="1 of 4 branches missed.">			if (rosterPlayer != null &amp;&amp; rosterPlayer.equalsIgnoreCase(player))</span>
+			{
+<span class="fc" id="L170">				return rosterPlayer;</span>
+			}
+<span class="fc" id="L172">		}</span>
+<span class="fc" id="L173">		return null;</span>
+	}
+
+	public static long computeGeTax(long lootAmount, GeTaxSettings geTaxSettings)
+	{
+<span class="pc bpc" id="L178" title="1 of 2 branches missed.">		GeTaxSettings safeSettings = geTaxSettings == null ? GeTaxSettings.disabled() : geTaxSettings;</span>
+<span class="pc bpc" id="L179" title="1 of 4 branches missed.">		if (!safeSettings.enabled</span>
+			|| lootAmount &lt; safeSettings.minimumValue
+<span class="pc bpc" id="L181" title="1 of 2 branches missed.">			|| Double.isNaN(safeSettings.percent)</span>
+<span class="pc bpc" id="L182" title="1 of 4 branches missed.">			|| Double.isInfinite(safeSettings.percent)</span>
+			|| safeSettings.percent &lt;= 0.0d)
+		{
+<span class="fc" id="L185">			return 0L;</span>
+		}
+
+<span class="fc" id="L188">		BigDecimal calculated = BigDecimal.valueOf(lootAmount)</span>
+<span class="fc" id="L189">			.multiply(BigDecimal.valueOf(safeSettings.percent))</span>
+<span class="fc" id="L190">			.divide(BigDecimal.valueOf(100L), 0, RoundingMode.DOWN);</span>
+<span class="fc" id="L191">		long capped = Math.min(safeSettings.maxTaxPerLoot, calculated.longValue());</span>
+<span class="fc" id="L192">		return Math.max(capped, 0L);</span>
+	}
+
+	private long sum(Map&lt;String, Long&gt; values)
+	{
+<span class="fc" id="L197">		long total = 0L;</span>
+<span class="fc bfc" id="L198" title="All 2 branches covered.">		for (Long value : values.values())</span>
+		{
+<span class="fc" id="L200">			total += value;</span>
+<span class="fc" id="L201">		}</span>
+<span class="fc" id="L202">		return total;</span>
+	}
+
+	@Getter
+	public static final class GeTaxSettings
+	{
+		private final boolean enabled;
+		private final long minimumValue;
+		private final double percent;
+		private final long maxTaxPerLoot;
+
+		public GeTaxSettings(boolean enabled, long minimumValue, double percent, long maxTaxPerLoot)
+<span class="fc" id="L214">		{</span>
+<span class="fc" id="L215">			this.enabled = enabled;</span>
+<span class="fc" id="L216">			this.minimumValue = minimumValue;</span>
+<span class="fc" id="L217">			this.percent = percent;</span>
+<span class="fc" id="L218">			this.maxTaxPerLoot = maxTaxPerLoot;</span>
+<span class="fc" id="L219">		}</span>
+
+		public static GeTaxSettings disabled()
+		{
+<span class="fc" id="L223">			return new GeTaxSettings(false, 0L, 0.0d, 0L);</span>
+		}
+
+	}
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

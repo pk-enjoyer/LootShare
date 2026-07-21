@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.splitmanager.sessions.SplitThreadAdapterTest" tests="1" skipped="0" failures="0" errors="0" timestamp="2026-07-21T12:19:09" hostname="Loulord" time="0.001">
+  <properties/>
+  <testcase name="skipsInvalidPersistedThreadsAndSegments" classname="com.splitmanager.sessions.SplitThreadAdapterTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

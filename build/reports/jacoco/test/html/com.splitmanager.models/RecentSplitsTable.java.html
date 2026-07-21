@@ -1,0 +1,329 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RecentSplitsTable.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">community-lootshare</a> &gt; <a href="index.source.html" class="el_package">com.splitmanager.models</a> &gt; <span class="el_source">RecentSplitsTable.java</span></div><h1>RecentSplitsTable.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (c) 2025, pk-enjoyer
+ * SPDX-License-Identifier: BSD-2-Clause
+ */
+
+package com.splitmanager.models;
+
+
+import com.splitmanager.PluginConfig;
+import com.splitmanager.sessions.SplitCalculator;
+import com.splitmanager.utils.Formats;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.text.ParseException;
+import lombok.Setter;
+import lombok.extern.slf4j.Slf4j;
+
+<span class="fc" id="L18">@Slf4j</span>
+public final class RecentSplitsTable extends javax.swing.table.AbstractTableModel
+{
+
+<span class="fc" id="L22">	private static final String[] COLS = {&quot;Time&quot;, &quot;Player&quot;, &quot;Loot&quot;, &quot;Tax&quot;};</span>
+<span class="fc" id="L23">	private static final java.time.ZoneId SYS_TZ = java.time.ZoneId.systemDefault();</span>
+<span class="fc" id="L24">	private final java.util.List&lt;Row&gt; rows = new java.util.ArrayList&lt;&gt;(10);</span>
+	private final PluginConfig config;
+	private SettlementConfigSnapshot settlementConfigSnapshot;
+	private SplitCalculator.GeTaxSettings geTaxSettings;
+	@Setter
+	private Listener listener;
+
+	public RecentSplitsTable(PluginConfig config)
+<span class="fc" id="L32">	{</span>
+<span class="fc" id="L33">		this.config = config;</span>
+<span class="fc" id="L34">	}</span>
+
+	public void setSettlementConfigSnapshot(SettlementConfigSnapshot settlementConfigSnapshot)
+	{
+<span class="fc" id="L38">		this.settlementConfigSnapshot = settlementConfigSnapshot;</span>
+<span class="fc" id="L39">		this.geTaxSettings = null;</span>
+<span class="fc" id="L40">		fireTableDataChanged();</span>
+<span class="fc" id="L41">	}</span>
+
+	public void setGeTaxSettings(SplitCalculator.GeTaxSettings geTaxSettings)
+	{
+<span class="fc" id="L45">		this.geTaxSettings = geTaxSettings;</span>
+<span class="fc" id="L46">		fireTableDataChanged();</span>
+<span class="fc" id="L47">	}</span>
+
+	@Override
+	public int getRowCount()
+	{
+<span class="fc" id="L52">		return rows.size();</span>
+	}
+
+	@Override
+	public int getColumnCount()
+	{
+<span class="fc" id="L58">		return 4;</span>
+	}
+
+	@Override
+	public Object getValueAt(int rowIndex, int columnIndex)
+	{
+<span class="fc" id="L64">		Row e = rows.get(rowIndex);</span>
+<span class="fc bfc" id="L65" title="All 5 branches covered.">		switch (columnIndex)</span>
+		{
+			case 0:
+<span class="fc" id="L68">				return e.time;</span>
+			case 1:
+<span class="fc" id="L70">				return e.event.getPlayer();</span>
+			case 2:
+<span class="fc" id="L72">				String t = e.event.getType();</span>
+<span class="fc bfc" id="L73" title="All 2 branches covered.">				if (SplitEvent.TYPE_JOINED.equalsIgnoreCase(t))</span>
+				{
+<span class="fc" id="L75">					return &quot;Joined&quot;;</span>
+				}
+<span class="fc bfc" id="L77" title="All 2 branches covered.">				if (SplitEvent.TYPE_LEFT.equalsIgnoreCase(t))</span>
+				{
+<span class="fc" id="L79">					return &quot;Left&quot;;</span>
+				}
+<span class="fc" id="L81">				return Formats.OsrsAmountFormatter.toSuffixString(rawLootAmount(e.event), 'k');</span>
+			case 3:
+<span class="fc" id="L83">				long geTax = geTaxAmount(e.event);</span>
+<span class="fc bfc" id="L84" title="All 2 branches covered.">				return geTax &gt; 0L ? Formats.OsrsAmountFormatter.toSuffixString(geTax, 'm') : &quot;&quot;;</span>
+			default:
+<span class="fc" id="L86">				return &quot;&quot;;</span>
+		}
+	}
+
+	@Override
+	public String getColumnName(int column)
+	{
+<span class="fc" id="L93">		return COLS[column];</span>
+	}
+
+	@Override
+	public Class&lt;?&gt; getColumnClass(int columnIndex)
+	{
+<span class="fc" id="L99">		return String.class;</span>
+	}
+
+	@Override
+	public boolean isCellEditable(int rowIndex, int columnIndex)
+	{
+		// Disable editing for JOINED/LEFT rows
+<span class="pc bpc" id="L106" title="2 of 4 branches missed.">		if (rowIndex &gt;= 0 &amp;&amp; rowIndex &lt; rows.size())</span>
+		{
+<span class="fc bfc" id="L108" title="All 2 branches covered.">			if (rows.get(rowIndex).event.isRosterEvent())</span>
+			{
+<span class="fc" id="L110">				return false;</span>
+			}
+		}
+<span class="fc bfc" id="L113" title="All 4 branches covered.">		return columnIndex == 1 || columnIndex == 2; // player, amount</span>
+	}
+
+	@Override
+	public void setValueAt(Object aValue, int rowIndex, int columnIndex)
+	{
+<span class="pc bpc" id="L119" title="1 of 4 branches missed.">		if (rowIndex &lt; 0 || rowIndex &gt;= rows.size())</span>
+		{
+<span class="fc" id="L121">			return;</span>
+		}
+<span class="fc" id="L123">		Row e = rows.get(rowIndex);</span>
+<span class="fc bfc" id="L124" title="All 2 branches covered.">		if (columnIndex == 1) // player</span>
+		{
+<span class="fc bfc" id="L126" title="All 2 branches covered.">			String v = aValue == null ? null : aValue.toString();</span>
+<span class="fc bfc" id="L127" title="All 4 branches covered.">			if (v != null &amp;&amp; !v.isBlank())</span>
+			{
+<span class="fc" id="L129">				e.event.setPlayer(v.trim());</span>
+			}
+<span class="fc" id="L131">		}</span>
+<span class="fc bfc" id="L132" title="All 2 branches covered.">		else if (columnIndex == 2) // amount (K)</span>
+		{
+			try
+			{
+<span class="fc" id="L136">				Long k = Formats.OsrsAmountFormatter.stringAmountToLongAmount((String) aValue, config);</span>
+<span class="fc" id="L137">				e.event.setAmount(k);</span>
+			}
+<span class="fc" id="L139">			catch (Exception ex)</span>
+			{
+<span class="fc" id="L141">				log.warn(&quot;Invalid amount: {}&quot;, aValue, ex);</span>
+<span class="fc" id="L142">			}</span>
+		}
+<span class="fc" id="L144">		fireTableRowsUpdated(rowIndex, rowIndex);</span>
+<span class="pc bpc" id="L145" title="1 of 2 branches missed.">		if (listener != null)</span>
+		{
+<span class="fc" id="L147">			listener.onEdited(e.event); // pass the edited event so we know its sessionId</span>
+		}
+<span class="fc" id="L149">	}</span>
+
+	private long rawLootAmount(SplitEvent event)
+	{
+<span class="pc bpc" id="L153" title="1 of 4 branches missed.">		if (event == null || event.getAmount() == null)</span>
+		{
+<span class="fc" id="L155">			return 0L;</span>
+		}
+<span class="fc" id="L157">		return Math.max(event.getAmount(), 0L);</span>
+	}
+
+	private long geTaxAmount(SplitEvent event)
+	{
+<span class="fc bfc" id="L162" title="All 2 branches covered.">		if (geTaxSettings != null)</span>
+		{
+<span class="fc" id="L164">			return geTaxAmount(event, geTaxSettings);</span>
+		}
+<span class="pc bpc" id="L166" title="2 of 8 branches missed.">		if (event == null || !event.isLootEvent() || event.getAmount() == null || !accountForGeTax())</span>
+		{
+<span class="fc" id="L168">			return 0L;</span>
+		}
+<span class="fc" id="L170">		double percent = geTaxPercent();</span>
+<span class="pc bpc" id="L171" title="2 of 6 branches missed.">		if (Double.isNaN(percent) || Double.isInfinite(percent) || percent &lt; 0.0d)</span>
+		{
+<span class="fc" id="L173">			percent = PluginConfig.DEFAULT_GE_TAX_PERCENT;</span>
+		}
+<span class="fc bfc" id="L175" title="All 2 branches covered.">		if (percent &lt;= 0.0d)</span>
+		{
+<span class="fc" id="L177">			return 0L;</span>
+		}
+<span class="fc bfc" id="L179" title="All 2 branches covered.">		if (event.getAmount() &lt; geTaxMinimumValue())</span>
+		{
+<span class="fc" id="L181">			return 0L;</span>
+		}
+<span class="fc" id="L183">		BigDecimal calculated = BigDecimal.valueOf(event.getAmount())</span>
+<span class="fc" id="L184">			.multiply(BigDecimal.valueOf(percent))</span>
+<span class="fc" id="L185">			.divide(BigDecimal.valueOf(100L), 0, RoundingMode.DOWN);</span>
+<span class="fc" id="L186">		long capped = Math.min(geTaxMaxPerLoot(), calculated.longValue());</span>
+<span class="fc" id="L187">		return Math.max(capped, 0L);</span>
+	}
+
+	private long geTaxAmount(SplitEvent event, SplitCalculator.GeTaxSettings settings)
+	{
+<span class="pc bpc" id="L192" title="1 of 2 branches missed.">		if (event == null</span>
+<span class="pc bpc" id="L193" title="1 of 2 branches missed.">			|| !event.isLootEvent()</span>
+<span class="pc bpc" id="L194" title="1 of 4 branches missed.">			|| event.getAmount() == null</span>
+			|| settings == null
+<span class="fc bfc" id="L196" title="All 2 branches covered.">			|| !settings.isEnabled()</span>
+<span class="pc bpc" id="L197" title="1 of 2 branches missed.">			|| event.getAmount() &lt; settings.getMinimumValue())</span>
+		{
+<span class="fc" id="L199">			return 0L;</span>
+		}
+<span class="fc" id="L201">		return SplitCalculator.computeGeTax(event.getAmount(), settings);</span>
+	}
+
+	private long geTaxMinimumValue()
+	{
+<span class="fc bfc" id="L206" title="All 2 branches covered.">		String configured = settlementConfigSnapshot == null ? config.geTaxMinimumValue() : settlementConfigSnapshot.getGeTaxMinimumValue();</span>
+<span class="pc bpc" id="L207" title="2 of 4 branches missed.">		String value = configured == null || configured.trim().isEmpty()</span>
+<span class="nc" id="L208">			? PluginConfig.DEFAULT_GE_TAX_MINIMUM_VALUE</span>
+<span class="fc" id="L209">			: configured.trim();</span>
+		try
+		{
+<span class="fc" id="L212">			return Formats.OsrsAmountFormatter.stringAmountToLongAmount(value, null);</span>
+		}
+<span class="fc" id="L214">		catch (ParseException e)</span>
+		{
+<span class="fc" id="L216">			log.warn(&quot;Failed to parse GE tax minimum value {}; using default {}&quot;, value, PluginConfig.DEFAULT_GE_TAX_MINIMUM_VALUE, e);</span>
+			try
+			{
+<span class="fc" id="L219">				return Formats.OsrsAmountFormatter.stringAmountToLongAmount(PluginConfig.DEFAULT_GE_TAX_MINIMUM_VALUE, null);</span>
+			}
+<span class="nc" id="L221">			catch (ParseException defaultError)</span>
+			{
+<span class="nc" id="L223">				log.warn(&quot;Failed to parse built-in GE tax minimum {}; disabling GE tax marker&quot;, PluginConfig.DEFAULT_GE_TAX_MINIMUM_VALUE, defaultError);</span>
+<span class="nc" id="L224">				return Long.MAX_VALUE;</span>
+			}
+		}
+	}
+
+	private long geTaxMaxPerLoot()
+	{
+<span class="fc bfc" id="L231" title="All 2 branches covered.">		String configured = settlementConfigSnapshot == null ? config.geTaxMaxPerLoot() : settlementConfigSnapshot.getGeTaxMaxPerLoot();</span>
+<span class="pc bpc" id="L232" title="1 of 4 branches missed.">		String value = configured == null || configured.trim().isEmpty()</span>
+<span class="fc" id="L233">			? PluginConfig.DEFAULT_GE_TAX_MAX_PER_LOOT_VALUE</span>
+<span class="fc" id="L234">			: configured.trim();</span>
+		try
+		{
+<span class="fc" id="L237">			return Formats.OsrsAmountFormatter.stringAmountToLongAmount(value, null);</span>
+		}
+<span class="nc" id="L239">		catch (ParseException e)</span>
+		{
+<span class="nc" id="L241">			log.warn(&quot;Failed to parse GE tax max per loot {}; using default {}&quot;, value, PluginConfig.DEFAULT_GE_TAX_MAX_PER_LOOT_VALUE, e);</span>
+			try
+			{
+<span class="nc" id="L244">				return Formats.OsrsAmountFormatter.stringAmountToLongAmount(PluginConfig.DEFAULT_GE_TAX_MAX_PER_LOOT_VALUE, null);</span>
+			}
+<span class="nc" id="L246">			catch (ParseException defaultError)</span>
+			{
+<span class="nc" id="L248">				log.warn(&quot;Failed to parse built-in GE tax max per loot {}; using default {}&quot;, PluginConfig.DEFAULT_GE_TAX_MAX_PER_LOOT_VALUE, PluginConfig.DEFAULT_GE_TAX_MAX_PER_LOOT, defaultError);</span>
+<span class="nc" id="L249">				return PluginConfig.DEFAULT_GE_TAX_MAX_PER_LOOT;</span>
+			}
+		}
+	}
+
+	private boolean accountForGeTax()
+	{
+<span class="fc bfc" id="L256" title="All 2 branches covered.">		if (settlementConfigSnapshot != null)</span>
+		{
+<span class="fc" id="L258">			return settlementConfigSnapshot.isAccountForGeTax();</span>
+		}
+<span class="pc bpc" id="L260" title="1 of 4 branches missed.">		return config != null &amp;&amp; config.accountForGeTax();</span>
+	}
+
+	private double geTaxPercent()
+	{
+<span class="fc bfc" id="L265" title="All 2 branches covered.">		if (settlementConfigSnapshot != null)</span>
+		{
+<span class="fc" id="L267">			return settlementConfigSnapshot.getGeTaxPercent();</span>
+		}
+<span class="pc bpc" id="L269" title="1 of 2 branches missed.">		return config == null ? PluginConfig.DEFAULT_GE_TAX_PERCENT : config.geTaxPercent();</span>
+	}
+
+	// Optionally expose a getter to let editors query the event of a row:
+	public SplitEvent getEventAt(int rowIndex)
+	{
+<span class="pc bpc" id="L275" title="1 of 4 branches missed.">		return (rowIndex &gt;= 0 &amp;&amp; rowIndex &lt; rows.size()) ? rows.get(rowIndex).event : null;</span>
+	}
+
+	private void addEntry(SplitEvent k)
+	{
+<span class="fc" id="L280">		String timeStr = &quot;&quot;;</span>
+<span class="pc bpc" id="L281" title="1 of 2 branches missed.">		if (k.getAt() != null)</span>
+		{
+<span class="fc" id="L283">			timeStr = Formats.getLocalTime().format(java.time.ZonedDateTime.ofInstant(k.getAt(), SYS_TZ));</span>
+		}
+		// newest on top (insert at index 0)
+<span class="fc" id="L286">		rows.add(0, new Row(k, timeStr));</span>
+<span class="fc" id="L287">		fireTableDataChanged();</span>
+<span class="fc" id="L288">	}</span>
+
+	public void setFromEvents(java.util.List&lt;SplitEvent&gt; events)
+	{
+<span class="fc" id="L292">		clear();</span>
+<span class="fc bfc" id="L293" title="All 4 branches covered.">		if (events == null || events.isEmpty())</span>
+		{
+<span class="fc" id="L295">			fireTableDataChanged();</span>
+<span class="fc" id="L296">			return;</span>
+		}
+		// Iterate from oldest to newest
+<span class="fc bfc" id="L299" title="All 2 branches covered.">		for (SplitEvent k : events)</span>
+		{
+<span class="fc" id="L301">			addEntry(k);</span>
+<span class="fc" id="L302">		}</span>
+<span class="fc" id="L303">		fireTableDataChanged();</span>
+<span class="fc" id="L304">	}</span>
+
+	public void clear()
+	{
+<span class="fc" id="L308">		rows.clear();</span>
+<span class="fc" id="L309">		fireTableDataChanged();</span>
+<span class="fc" id="L310">	}</span>
+
+	public interface Listener
+	{
+		void onEdited(SplitEvent editedEvent);
+	}
+
+	private static final class Row
+	{
+		final SplitEvent event; // keep reference for editing
+		final String time;
+
+		Row(SplitEvent event, String time)
+<span class="fc" id="L323">		{</span>
+<span class="fc" id="L324">			this.event = event;</span>
+<span class="fc" id="L325">			this.time = time;</span>
+<span class="fc" id="L326">		}</span>
+	}
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

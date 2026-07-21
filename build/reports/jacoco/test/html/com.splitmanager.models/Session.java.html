@@ -1,0 +1,160 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Session.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">community-lootshare</a> &gt; <a href="index.source.html" class="el_package">com.splitmanager.models</a> &gt; <span class="el_source">Session.java</span></div><h1>Session.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (c) 2025, pk-enjoyer
+ * SPDX-License-Identifier: BSD-2-Clause
+ */
+
+package com.splitmanager.models;
+
+import com.google.gson.annotations.SerializedName;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import lombok.Getter;
+import lombok.Setter;
+
+/**
+ * Immutable-ish data model representing a single segment of a session thread.
+ * &lt;p&gt;
+ * How sessions are tracked overall
+ * - The plugin tracks &quot;threads&quot; of activity consisting of a root (mother) session and
+ * zero or more child sessions. A new child is created whenever the roster changes AFTER
+ * at least one event has been recorded, preserving historical rosters for split math.
+ * - The root (mother) session has motherId = null and represents the thread start. The first
+ * active child is created immediately when a thread starts so that events and roster are
+ * always associated with a child segment. All subsequent children reference the same motherId.
+ * - ManagerSession owns a Map&lt;String, Session&gt; of all sessions and switches the current active
+ * child by storing its id. ManagerSession also forks new children on roster changes and
+ * appends events to the active child.
+ * &lt;p&gt;
+ * What each Session holds
+ * - id: unique identifier (UUID string) used as the key in ManagerSession's map and persisted.
+ * - start/end: timestamps for this segment; end == null indicates the segment is currently active.
+ * - motherId: null for the mother/root; otherwise the id of the mother that all children share.
+ * - players: the roster for this segment (names are stored as mains; alts resolved earlier).
+ * - events: ordered list of SplitEvent records attributed during this segment.
+ * - settlementConfigAtStart/end: calculation context stored on mother sessions for historical metrics.
+ * &lt;p&gt;
+ * Lifecycle notes
+ * - A thread starts by creating a mother + an initial child (active). Events are written to the
+ * active child only. If a roster mutation happens and the current child already has events,
+ * ManagerSession ends the current child and creates a new child with a copied roster and the
+ * mutation applied. If there are no events yet, the roster is edited in-place on the current child.
+ * - Stopping a thread ends the active child, and if the mother is still open, it is ended too.
+ * &lt;p&gt;
+ * Persistence/serialization
+ * - This model is Gson-serializable; SessionStorage persists session data as versioned JSON in
+ * the plugin's per-profile .runelite directory. Instant fields are serialized via a custom adapter.
+ */
+@Getter
+public class Session
+{
+	public static final String CURRENT_PLUGIN_VERSION = &quot;3.1.0&quot;;
+
+	/**
+	 * Unique identifier for this segment (UUID string). Used as the key in persistence and lookup.
+	 */
+	private final String id;
+
+	/**
+	 * Wall-clock time when this segment became active (creation time for children; thread start for mother).
+	 */
+	private final Instant start;
+	/**
+	 * Id of the mother (root) session. Null means this instance is the mother/root of the thread.
+	 */
+	private final String motherId; // null for mother; otherwise id of mother
+	/**
+	 * Roster (set) of players for this segment. Order is insertion order as displayed in UI.
+	 * Names are expected to be mains; alt-&gt;main resolution happens before mutation.
+	 */
+<span class="fc" id="L74">	private final Set&lt;String&gt; players = new LinkedHashSet&lt;&gt;();</span>
+	/**
+	 * Events recorded during this segment, in insertion order.
+	 */
+<span class="fc" id="L78">	@SerializedName(value = &quot;events&quot;, alternate = {&quot;kills&quot;})</span>
+	private final List&lt;SplitEvent&gt; events = new ArrayList&lt;&gt;();
+	/**
+	 * Plugin version that created this segment layout. Missing on legacy data from versions before tracking.
+	 */
+	@Setter
+	private String pluginVersion;
+	/**
+	 * When non-null, marks the time this segment was closed. Null implies the segment is active.
+	 */
+	@Setter
+	private Instant end; // null when active
+	/**
+	 * Settlement-affecting config captured when a mother thread starts. Only meaningful on mother sessions.
+	 */
+	@Setter
+	private SettlementConfigSnapshot settlementConfigAtStart;
+	/**
+	 * Settlement-affecting config captured when a mother thread ends. Only meaningful on mother sessions.
+	 */
+	@Setter
+	private SettlementConfigSnapshot settlementConfigAtEnd;
+	/**
+	 * Alt-to-main mappings captured when a mother thread starts. Only meaningful on mother sessions.
+	 */
+	@Setter
+	private Map&lt;String, String&gt; altMappingAtStart;
+	/**
+	 * Alt-to-main mappings captured when a mother thread ends. Only meaningful on mother sessions.
+	 */
+	@Setter
+	private Map&lt;String, String&gt; altMappingAtEnd;
+
+	/**
+	 * Create a new Session segment.
+	 *
+	 * @param id       unique identifier (UUID string)
+	 * @param start    segment start time
+	 * @param motherId null for mother/root; otherwise id of the mother this child belongs to
+	 */
+	public Session(String id, Instant start, String motherId)
+<span class="fc" id="L119">	{</span>
+<span class="fc" id="L120">		this.id = id;</span>
+<span class="fc" id="L121">		this.start = start;</span>
+<span class="fc" id="L122">		this.motherId = motherId;</span>
+<span class="fc" id="L123">		this.pluginVersion = CURRENT_PLUGIN_VERSION;</span>
+<span class="fc" id="L124">	}</span>
+
+	/**
+	 * @return true when this segment is currently active (end == null).
+	 */
+	public boolean isActive()
+	{
+<span class="fc bfc" id="L131" title="All 2 branches covered.">		return end == null;</span>
+	}
+
+	/**
+	 * @return true if at least one event has been recorded in this segment.
+	 */
+	public boolean hasEvents()
+	{
+<span class="pc bpc" id="L139" title="1 of 2 branches missed.">		return !events.isEmpty();</span>
+	}
+
+	/**
+	 * @return true if at least one loot event has been recorded in this segment.
+	 */
+	public boolean hasLootEvents()
+	{
+<span class="fc" id="L147">		return events.stream().anyMatch(SplitEvent::isLootEvent);</span>
+	}
+
+	public Map&lt;String, String&gt; getAltMappingAtStart()
+	{
+<span class="fc bfc" id="L152" title="All 2 branches covered.">		return altMappingAtStart == null ? null : new LinkedHashMap&lt;&gt;(altMappingAtStart);</span>
+	}
+
+	public Map&lt;String, String&gt; getAltMappingAtEnd()
+	{
+<span class="fc bfc" id="L157" title="All 2 branches covered.">		return altMappingAtEnd == null ? null : new LinkedHashMap&lt;&gt;(altMappingAtEnd);</span>
+	}
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

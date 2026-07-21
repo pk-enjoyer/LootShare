@@ -1,0 +1,417 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ManagerKnownPlayers.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">community-lootshare</a> &gt; <a href="index.source.html" class="el_package">com.splitmanager</a> &gt; <span class="el_source">ManagerKnownPlayers.java</span></div><h1>ManagerKnownPlayers.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (c) 2025, pk-enjoyer
+ * SPDX-License-Identifier: BSD-2-Clause
+ */
+
+package com.splitmanager;
+
+import com.google.gson.Gson;
+import com.splitmanager.utils.InstantTypeAdapter;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
+import javax.inject.Inject;
+import javax.inject.Singleton;
+import lombok.extern.slf4j.Slf4j;
+
+/**
+ * Manages known players and alt-to-main relationships persisted through plugin config.
+ */
+@Singleton
+<span class="fc" id="L27">@Slf4j</span>
+public class ManagerKnownPlayers
+{
+	private final Gson gson;
+	private final PluginConfig config;
+<span class="fc" id="L32">	private final Set&lt;String&gt; knownPlayers = new LinkedHashSet&lt;&gt;();</span>
+<span class="fc" id="L33">	private final Map&lt;String, String&gt; altMainMapping = new LinkedHashMap&lt;&gt;();</span>
+
+	@Inject
+	public ManagerKnownPlayers(PluginConfig config, Gson gson)
+<span class="fc" id="L37">	{</span>
+<span class="fc" id="L38">		this.config = config;</span>
+		// Use the client's injected Gson and customize via newBuilder per PluginHub guidelines
+<span class="fc" id="L40">		this.gson = gson.newBuilder()</span>
+<span class="fc" id="L41">			.registerTypeAdapter(Instant.class, new InstantTypeAdapter())</span>
+<span class="fc" id="L42">			.create();</span>
+<span class="fc" id="L43">	}</span>
+
+	public void loadFromConfig()
+	{
+<span class="fc" id="L47">		knownPlayers.clear();</span>
+<span class="fc" id="L48">		String csv = config.knownPlayersCsv();</span>
+<span class="pc bpc" id="L49" title="1 of 4 branches missed.">		if (csv != null &amp;&amp; !csv.isEmpty())</span>
+		{
+<span class="fc bfc" id="L51" title="All 2 branches covered.">			for (String p : csv.split(&quot;,&quot;))</span>
+			{
+<span class="fc" id="L53">				String t = p.trim();</span>
+<span class="fc bfc" id="L54" title="All 2 branches covered.">				if (!t.isEmpty())</span>
+				{
+<span class="fc" id="L56">					addKnownPlayerFromConfig(t);</span>
+				}
+			}
+		}
+
+<span class="fc" id="L61">		altMainMapping.clear();</span>
+<span class="fc" id="L62">		String altsJson = config.altsJson();</span>
+<span class="pc bpc" id="L63" title="1 of 4 branches missed.">		if (altsJson != null &amp;&amp; !altsJson.isEmpty())</span>
+		{
+			try
+			{
+<span class="fc" id="L67">				Map&lt;?, ?&gt; m = gson.fromJson(altsJson, Map.class);</span>
+<span class="pc bpc" id="L68" title="1 of 2 branches missed.">				if (m != null)</span>
+				{
+<span class="fc bfc" id="L70" title="All 2 branches covered.">					for (Map.Entry&lt;?, ?&gt; entry : m.entrySet())</span>
+					{
+<span class="pc bpc" id="L72" title="2 of 4 branches missed.">						if (entry.getKey() instanceof String &amp;&amp; entry.getValue() instanceof String)</span>
+						{
+<span class="fc" id="L74">							altMainMapping.put((String) entry.getKey(), (String) entry.getValue());</span>
+						}
+<span class="fc" id="L76">					}</span>
+				}
+			}
+<span class="fc" id="L79">			catch (Exception e)</span>
+			{
+<span class="fc" id="L81">				log.warn(&quot;Failed to parse alt mappings from config&quot;, e);</span>
+<span class="fc" id="L82">			}</span>
+		}
+<span class="fc" id="L84">	}</span>
+
+	public void saveToConfig()
+	{
+<span class="fc" id="L88">		config.knownPlayersCsv(String.join(&quot;,&quot;, knownPlayers));</span>
+		try
+		{
+<span class="fc" id="L91">			config.altsJson(gson.toJson(altMainMapping));</span>
+		}
+<span class="fc" id="L93">		catch (Exception e)</span>
+		{
+<span class="fc" id="L95">			log.warn(&quot;Failed to save alt mappings to config&quot;, e);</span>
+<span class="fc" id="L96">		}</span>
+<span class="fc" id="L97">	}</span>
+
+	public Set&lt;String&gt; getKnownPlayers()
+	{
+<span class="fc" id="L101">		return Collections.unmodifiableSet(knownPlayers);</span>
+	}
+
+	public Map&lt;String, String&gt; getAltMainMapping()
+	{
+<span class="fc" id="L106">		return Collections.unmodifiableMap(altMainMapping);</span>
+	}
+
+	/**
+	 * Parse the alt name from a selected entry.
+	 */
+	public String parseAltFromEntry(String selectedEntry)
+	{
+<span class="fc bfc" id="L114" title="All 2 branches covered.">		if (selectedEntry == null)</span>
+		{
+<span class="fc" id="L116">			return &quot;&quot;;</span>
+		}
+<span class="fc bfc" id="L118" title="All 2 branches covered.">		if (selectedEntry.contains(&quot; is an alt of &quot;))</span>
+		{
+<span class="fc" id="L120">			String[] parts = selectedEntry.split(&quot; is an alt of &quot;, 2);</span>
+<span class="pc bpc" id="L121" title="1 of 2 branches missed.">			if (parts.length == 2)</span>
+			{
+<span class="fc" id="L123">				return parts[0].trim();</span>
+			}
+		}
+<span class="fc" id="L126">		return selectedEntry.trim();</span>
+	}
+
+	/**
+	 * @return unmodifiable set of known players that are mains (exclude names mapped as alts).
+	 */
+	public Set&lt;String&gt; getKnownMains()
+	{
+<span class="fc" id="L134">		LinkedHashSet&lt;String&gt; mains = knownPlayers.stream()</span>
+<span class="fc bfc" id="L135" title="All 2 branches covered.">			.filter(p -&gt; !isAlt(p))</span>
+<span class="fc" id="L136">			.collect(Collectors.toCollection(LinkedHashSet::new));</span>
+<span class="fc" id="L137">		return Collections.unmodifiableSet(mains);</span>
+	}
+
+	/**
+	 * Validate whether an alt may be linked to a main.
+	 * Rules:
+	 * - alt and main must be non-empty and not equal (case-insensitive)
+	 * - the chosen main cannot itself be an alt
+	 * - the alt cannot already point to a different main
+	 * - the alt cannot be someone else's main (prevents cycles)
+	 *
+	 * @return true if the link is allowed
+	 */
+	public boolean canLinkAltToMain(String alt, String main)
+	{
+<span class="fc bfc" id="L152" title="All 4 branches covered.">		if (alt == null || main == null)</span>
+		{
+<span class="fc" id="L154">			return false;</span>
+		}
+<span class="fc" id="L156">		String a = alt.trim();</span>
+<span class="fc" id="L157">		String m = main.trim();</span>
+<span class="fc bfc" id="L158" title="All 4 branches covered.">		if (a.isEmpty() || m.isEmpty())</span>
+		{
+<span class="fc" id="L160">			return false;</span>
+		}
+<span class="fc bfc" id="L162" title="All 2 branches covered.">		if (a.equalsIgnoreCase(m))</span>
+		{
+<span class="fc" id="L164">			return false;</span>
+		}
+<span class="fc bfc" id="L166" title="All 2 branches covered.">		if (isAlt(m))</span>
+		{
+<span class="fc" id="L168">			return false;</span>
+		}
+<span class="fc" id="L170">		String existingMain = getMappedMain(a);</span>
+<span class="pc bpc" id="L171" title="1 of 4 branches missed.">		if (existingMain != null &amp;&amp; !existingMain.equalsIgnoreCase(m))</span>
+		{
+<span class="nc" id="L173">			return false;</span>
+		}
+<span class="fc bfc" id="L175" title="All 2 branches covered.">		for (Map.Entry&lt;String, String&gt; e : altMainMapping.entrySet())</span>
+		{
+<span class="pc bpc" id="L177" title="1 of 4 branches missed.">			if (e.getValue() != null &amp;&amp; e.getValue().equalsIgnoreCase(a))</span>
+			{
+<span class="fc" id="L179">				return false;</span>
+			}
+<span class="fc" id="L181">		}</span>
+<span class="fc" id="L182">		return true;</span>
+	}
+
+	/**
+	 * Attempt to persist an alt-&gt;main link, enforcing the validation from canLinkAltToMain().
+	 * Adds both names to the known list on success.
+	 *
+	 * @return true if the mapping either already existed (same) or was created
+	 */
+	public boolean trySetAltMain(String alt, String main)
+	{
+<span class="fc bfc" id="L193" title="All 2 branches covered.">		if (!canLinkAltToMain(alt, main))</span>
+		{
+<span class="fc" id="L195">			return false;</span>
+		}
+<span class="fc" id="L197">		String a = alt.trim();</span>
+<span class="fc" id="L198">		String m = main.trim();</span>
+<span class="fc" id="L199">		String existingMain = getMappedMain(a);</span>
+<span class="pc bpc" id="L200" title="1 of 4 branches missed.">		if (existingMain != null &amp;&amp; existingMain.equalsIgnoreCase(m))</span>
+		{
+<span class="fc" id="L202">			return true;</span>
+		}
+<span class="fc" id="L204">		altMainMapping.put(a, m);</span>
+<span class="fc" id="L205">		knownPlayers.add(a);</span>
+<span class="fc" id="L206">		knownPlayers.add(m);</span>
+<span class="fc" id="L207">		saveToConfig();</span>
+<span class="fc" id="L208">		return true;</span>
+	}
+
+	/**
+	 * Unlink the given alt from its main.
+	 *
+	 * @param alt the alt name to unlink
+	 * @return true if an existing mapping was removed
+	 */
+	public boolean unlinkAlt(String alt)
+	{
+<span class="fc bfc" id="L219" title="All 4 branches covered.">		if (alt == null || alt.trim().isEmpty())</span>
+		{
+<span class="fc" id="L221">			return false;</span>
+		}
+<span class="fc" id="L223">		String a = alt.trim();</span>
+<span class="fc" id="L224">		String existingAlt = findMappedAltKey(a);</span>
+<span class="fc bfc" id="L225" title="All 2 branches covered.">		if (existingAlt == null)</span>
+		{
+<span class="fc" id="L227">			return false;</span>
+		}
+<span class="fc" id="L229">		altMainMapping.remove(existingAlt);</span>
+<span class="fc" id="L230">		saveToConfig();</span>
+<span class="fc" id="L231">		return true;</span>
+	}
+
+	/**
+	 * Resolve a display name to its main account by following the alt-&gt;main mapping.
+	 * If the name is not an alt, returns the original trimmed name. Protects against cycles.
+	 *
+	 * @param name main or alt name
+	 * @return resolved main name (or the input trimmed if not an alt)
+	 */
+	public String getMainName(String name)
+	{
+<span class="fc bfc" id="L243" title="All 2 branches covered.">		if (name == null)</span>
+		{
+<span class="fc" id="L245">			return null;</span>
+		}
+<span class="fc" id="L247">		String n = name.trim();</span>
+<span class="fc bfc" id="L248" title="All 2 branches covered.">		if (n.isEmpty())</span>
+		{
+<span class="fc" id="L250">			return null;</span>
+		}
+<span class="fc" id="L252">		String visited = null;</span>
+		// resolve chain up to a few steps to avoid cycles
+<span class="pc bpc" id="L254" title="1 of 2 branches missed.">		for (int i = 0; i &lt; 5; i++)</span>
+		{
+<span class="fc" id="L256">			String m = getMappedMain(n);</span>
+<span class="pc bpc" id="L257" title="1 of 4 branches missed.">			if (m == null || m.equalsIgnoreCase(n))</span>
+			{
+<span class="fc" id="L259">				return n;</span>
+			}
+<span class="fc bfc" id="L261" title="All 4 branches covered.">			if (visited != null &amp;&amp; visited.equalsIgnoreCase(m))</span>
+			{
+<span class="fc" id="L263">				break;</span>
+			}
+<span class="fc" id="L265">			visited = n;</span>
+<span class="fc" id="L266">			n = m;</span>
+		}
+<span class="fc" id="L268">		return n;</span>
+	}
+
+	/**
+	 * @param name player name
+	 * @return true if the given name is present as a key in the alt-&gt;main mapping
+	 */
+	public boolean isAlt(String name)
+	{
+<span class="fc bfc" id="L277" title="All 2 branches covered.">		if (name == null)</span>
+		{
+<span class="fc" id="L279">			return false;</span>
+		}
+<span class="fc bfc" id="L281" title="All 2 branches covered.">		return findMappedAltKey(name.trim()) != null;</span>
+	}
+
+	/**
+	 * List all alts currently linked to the given main.
+	 *
+	 * @param main main account name
+	 * @return sorted list of alt names linked to this main (case-insensitive compare)
+	 */
+	public List&lt;String&gt; getAltsOf(String main)
+	{
+<span class="pc bpc" id="L292" title="1 of 4 branches missed.">		if (main == null || main.isBlank())</span>
+		{
+<span class="fc" id="L294">			return List.of();</span>
+		}
+<span class="fc" id="L296">		String m = main.trim();</span>
+<span class="fc" id="L297">		List&lt;String&gt; out = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L298" title="All 2 branches covered.">		for (Map.Entry&lt;String, String&gt; e : altMainMapping.entrySet())</span>
+		{
+<span class="pc bpc" id="L300" title="1 of 4 branches missed.">			if (e.getValue() != null &amp;&amp; e.getValue().equalsIgnoreCase(m))</span>
+			{
+<span class="fc" id="L302">				out.add(e.getKey());</span>
+			}
+<span class="fc" id="L304">		}</span>
+<span class="fc" id="L305">		out.sort(String::compareToIgnoreCase);</span>
+<span class="fc" id="L306">		return out;</span>
+	}
+
+
+	/**
+	 * Add a player name to the known-players list.
+	 *
+	 * @param name display name
+	 * @return true if added
+	 */
+	public boolean addKnownPlayer(String name)
+	{
+<span class="fc bfc" id="L318" title="All 2 branches covered.">		String normalized = name == null ? null : name.trim();</span>
+<span class="fc bfc" id="L319" title="All 4 branches covered.">		if (normalized == null || normalized.isEmpty())</span>
+		{
+<span class="fc" id="L321">			return false;</span>
+		}
+<span class="fc bfc" id="L323" title="All 2 branches covered.">		if (knownPlayers.stream().anyMatch(p -&gt; p.equalsIgnoreCase(normalized)))</span>
+		{
+<span class="fc" id="L325">			return false;</span>
+		}
+<span class="fc" id="L327">		boolean added = knownPlayers.add(normalized);</span>
+<span class="pc bpc" id="L328" title="1 of 2 branches missed.">		if (added)</span>
+		{
+<span class="fc" id="L330">			saveToConfig();</span>
+		}
+<span class="fc" id="L332">		return added;</span>
+	}
+
+	private void addKnownPlayerFromConfig(String name)
+	{
+<span class="fc bfc" id="L337" title="All 2 branches covered.">		if (knownPlayers.stream().noneMatch(p -&gt; p.equalsIgnoreCase(name)))</span>
+		{
+<span class="fc" id="L339">			knownPlayers.add(name);</span>
+		}
+<span class="fc" id="L341">	}</span>
+
+	public boolean isKnownPlayer(String name)
+	{
+<span class="fc" id="L345">		return isKnownPlayer(name, false);</span>
+	}
+
+	public boolean isKnownPlayer(String name, boolean save)
+	{
+<span class="pc bpc" id="L350" title="1 of 4 branches missed.">		if (name == null || name.trim().isEmpty())</span>
+		{
+<span class="fc" id="L352">			return false;</span>
+		}
+
+<span class="fc" id="L355">		String normalized = name.trim();</span>
+<span class="fc" id="L356">		boolean known = knownPlayers.stream().anyMatch(p -&gt; p.equalsIgnoreCase(normalized));</span>
+
+<span class="pc bpc" id="L358" title="1 of 4 branches missed.">		if (save &amp;&amp; !known)</span>
+		{
+<span class="fc" id="L360">			addKnownPlayer(normalized);</span>
+<span class="fc" id="L361">			return true;</span>
+		}
+
+<span class="fc" id="L364">		return known;</span>
+	}
+
+	public boolean removeKnownPlayer(String name)
+	{
+<span class="fc bfc" id="L369" title="All 2 branches covered.">		String n = name == null ? null : name.trim();</span>
+<span class="fc bfc" id="L370" title="All 4 branches covered.">		if (n == null || n.isEmpty())</span>
+		{
+<span class="fc" id="L372">			return false;</span>
+		}
+<span class="fc" id="L374">		String knownName = knownPlayers.stream()</span>
+<span class="fc" id="L375">			.filter(p -&gt; p.equalsIgnoreCase(n))</span>
+<span class="fc" id="L376">			.findFirst()</span>
+<span class="fc" id="L377">			.orElse(null);</span>
+<span class="pc bpc" id="L378" title="1 of 4 branches missed.">		boolean rem = knownName != null &amp;&amp; knownPlayers.remove(knownName);</span>
+<span class="fc" id="L379">		String mappedAlt = findMappedAltKey(n);</span>
+<span class="pc bpc" id="L380" title="3 of 4 branches missed.">		boolean removedAlt = mappedAlt != null &amp;&amp; altMainMapping.remove(mappedAlt) != null;</span>
+<span class="pc bpc" id="L381" title="1 of 4 branches missed.">		boolean removedMainLinks = altMainMapping.entrySet().removeIf(e -&gt; e.getValue() != null &amp;&amp; e.getValue().equalsIgnoreCase(n));</span>
+
+<span class="pc bpc" id="L383" title="2 of 6 branches missed.">		if (rem || removedAlt || removedMainLinks)</span>
+		{
+<span class="fc" id="L385">			saveToConfig();</span>
+		}
+<span class="fc" id="L387">		return rem;</span>
+	}
+
+	private String getMappedMain(String alt)
+	{
+<span class="fc" id="L392">		String key = findMappedAltKey(alt);</span>
+<span class="fc bfc" id="L393" title="All 2 branches covered.">		return key == null ? null : altMainMapping.get(key);</span>
+	}
+
+	private String findMappedAltKey(String alt)
+	{
+<span class="pc bpc" id="L398" title="1 of 2 branches missed.">		if (alt == null)</span>
+		{
+<span class="nc" id="L400">			return null;</span>
+		}
+<span class="fc bfc" id="L402" title="All 2 branches covered.">		for (String key : altMainMapping.keySet())</span>
+		{
+<span class="pc bpc" id="L404" title="1 of 4 branches missed.">			if (key != null &amp;&amp; key.equalsIgnoreCase(alt))</span>
+			{
+<span class="fc" id="L406">				return key;</span>
+			}
+<span class="fc" id="L408">		}</span>
+<span class="fc" id="L409">		return null;</span>
+	}
+
+	public void init()
+	{
+<span class="fc" id="L414">		loadFromConfig();</span>
+<span class="fc" id="L415">	}</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

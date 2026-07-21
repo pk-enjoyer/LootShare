@@ -1,0 +1,228 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MarkdownFormatter.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">community-lootshare</a> &gt; <a href="index.source.html" class="el_package">com.splitmanager.utils</a> &gt; <span class="el_source">MarkdownFormatter.java</span></div><h1>MarkdownFormatter.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (c) 2025, pk-enjoyer
+ * SPDX-License-Identifier: BSD-2-Clause
+ */
+
+package com.splitmanager.utils;
+
+import com.splitmanager.ManagerSession;
+import com.splitmanager.PluginConfig;
+import com.splitmanager.models.PlayerMetrics;
+import com.splitmanager.models.Session;
+import java.text.DecimalFormat;
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * Handles formatting player metrics into markdown tables and other text formats.
+ */
+<span class="nc" id="L19">public class MarkdownFormatter</span>
+{
+
+	/**
+	 * Build metrics table as markdown.
+	 */
+	public static String buildMetricsMarkdown(List&lt;PlayerMetrics&gt; data, PluginConfig config)
+	{
+<span class="fc" id="L27">		DecimalFormat df = Formats.getDecimalFormat();</span>
+<span class="fc" id="L28">		StringBuilder sb = new StringBuilder();</span>
+
+<span class="fc bfc" id="L30" title="All 2 branches covered.">		if (config.directPayments())</span>
+		{
+<span class="fc" id="L32">			List&lt;String&gt; transfers = PaymentProcessor.computeDirectPayments(data);</span>
+<span class="pc bpc" id="L33" title="1 of 2 branches missed.">			if (!transfers.isEmpty())</span>
+			{
+<span class="fc" id="L35">				sb.append('\n').append(&quot;Suggested direct payments:\n&quot;);</span>
+<span class="fc bfc" id="L36" title="All 2 branches covered.">				for (String line : transfers)</span>
+				{
+<span class="fc" id="L38">					sb.append(&quot;- &quot;).append(line).append('\n');</span>
+<span class="fc" id="L39">				}</span>
+			}
+		}
+
+<span class="fc bfc" id="L43" title="All 2 branches covered.">		if (config.copyForDiscord())</span>
+		{
+<span class="fc" id="L45">			sb.append(&quot;```\n&quot;);</span>
+		}
+
+<span class="fc bfc" id="L48" title="All 2 branches covered.">		if (!config.directPayments())</span>
+		{
+<span class="fc" id="L50">			appendFullTable(data, df, sb, config);</span>
+		}
+		else
+		{
+<span class="fc" id="L54">			appendSimpleTable(data, df, sb);</span>
+		}
+
+<span class="fc bfc" id="L57" title="All 2 branches covered.">		if (config.copyForDiscord())</span>
+		{
+<span class="fc" id="L59">			sb.append(&quot;```\n&quot;);</span>
+		}
+
+<span class="fc" id="L62">		return sb.toString();</span>
+	}
+
+	private static void appendFullTable(List&lt;PlayerMetrics&gt; data,
+	                                    DecimalFormat df,
+	                                    StringBuilder sb,
+	                                    PluginConfig config)
+	{
+<span class="fc" id="L70">		List&lt;String[]&gt; rows = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L71">		int maxPlayer = &quot;Player&quot;.length();</span>
+<span class="fc" id="L72">		int maxTotal = &quot;Total&quot;.length();</span>
+<span class="fc" id="L73">		int maxSplit = &quot;Split&quot;.length();</span>
+
+<span class="fc bfc" id="L75" title="All 2 branches covered.">		for (PlayerMetrics pm : data)</span>
+		{
+<span class="pc bpc" id="L77" title="1 of 2 branches missed.">			String player = pm.player == null ? &quot;&quot; : pm.player.replace(&quot;|&quot;, &quot;\\|&quot;);</span>
+<span class="fc" id="L78">			String total = df.format(pm.total);</span>
+<span class="fc" id="L79">			long dispSplit = pm.split;</span>
+
+<span class="fc bfc" id="L81" title="All 2 branches covered.">			if (config.flipSettlementSign())</span>
+			{
+<span class="fc" id="L83">				dispSplit = -dispSplit;</span>
+			}
+
+<span class="fc" id="L86">			String split = df.format(dispSplit);</span>
+<span class="fc" id="L87">			rows.add(new String[]{player, total, split});</span>
+
+<span class="fc bfc" id="L89" title="All 2 branches covered.">			if (player.length() &gt; maxPlayer)</span>
+			{
+<span class="fc" id="L91">				maxPlayer = player.length();</span>
+			}
+<span class="fc bfc" id="L93" title="All 2 branches covered.">			if (total.length() &gt; maxTotal)</span>
+			{
+<span class="fc" id="L95">				maxTotal = total.length();</span>
+			}
+<span class="fc bfc" id="L97" title="All 2 branches covered.">			if (split.length() &gt; maxSplit)</span>
+			{
+<span class="fc" id="L99">				maxSplit = split.length();</span>
+			}
+<span class="fc" id="L101">		}</span>
+
+<span class="fc" id="L103">		sb.append(&quot;| &quot;)</span>
+<span class="fc" id="L104">			.append(padRight(&quot;Player&quot;, maxPlayer)).append(&quot; | &quot;)</span>
+<span class="fc" id="L105">			.append(padLeft(&quot;Total&quot;, maxTotal)).append(&quot; | &quot;)</span>
+<span class="fc" id="L106">			.append(padLeft(&quot;Split&quot;, maxSplit)).append(&quot; |\n&quot;);</span>
+
+<span class="fc" id="L108">		sb.append(&quot;| &quot;)</span>
+<span class="fc" id="L109">			.append(repeat(maxPlayer)).append(&quot; | &quot;)</span>
+<span class="fc" id="L110">			.append(repeat(maxTotal - 1)).append(&quot;:&quot;).append(&quot; | &quot;)</span>
+<span class="fc" id="L111">			.append(repeat(maxSplit - 1)).append(&quot;:&quot;).append(&quot; |\n&quot;);</span>
+
+<span class="fc bfc" id="L113" title="All 2 branches covered.">		for (String[] r : rows)</span>
+		{
+<span class="fc" id="L115">			sb.append(&quot;| &quot;)</span>
+<span class="fc" id="L116">				.append(padRight(r[0], maxPlayer)).append(&quot; | &quot;)</span>
+<span class="fc" id="L117">				.append(padLeft(r[1], maxTotal)).append(&quot; | &quot;)</span>
+<span class="fc" id="L118">				.append(padLeft(r[2], maxSplit)).append(&quot; |\n&quot;);</span>
+<span class="fc" id="L119">		}</span>
+<span class="fc" id="L120">	}</span>
+
+	private static void appendSimpleTable(List&lt;PlayerMetrics&gt; data,
+	                                      DecimalFormat df,
+	                                      StringBuilder sb)
+	{
+<span class="fc" id="L126">		List&lt;String[]&gt; rows = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L127">		int maxPlayer = &quot;Player&quot;.length();</span>
+<span class="fc" id="L128">		int maxSplit = &quot;Split&quot;.length();</span>
+
+<span class="fc bfc" id="L130" title="All 2 branches covered.">		for (var pm : data)</span>
+		{
+<span class="pc bpc" id="L132" title="1 of 2 branches missed.">			String player = pm.player == null ? &quot;&quot; : pm.player.replace(&quot;|&quot;, &quot;\\|&quot;);</span>
+<span class="fc" id="L133">			long dispSplit = pm.split;</span>
+<span class="fc" id="L134">			String split = df.format(dispSplit);</span>
+
+<span class="fc" id="L136">			rows.add(new String[]{player, split});</span>
+
+<span class="fc bfc" id="L138" title="All 2 branches covered.">			if (player.length() &gt; maxPlayer)</span>
+			{
+<span class="fc" id="L140">				maxPlayer = player.length();</span>
+			}
+<span class="fc bfc" id="L142" title="All 2 branches covered.">			if (split.length() &gt; maxSplit)</span>
+			{
+<span class="fc" id="L144">				maxSplit = split.length();</span>
+			}
+<span class="fc" id="L146">		}</span>
+
+<span class="fc" id="L148">		sb.append(&quot;| &quot;)</span>
+<span class="fc" id="L149">			.append(padRight(&quot;Player&quot;, maxPlayer)).append(&quot; | &quot;)</span>
+<span class="fc" id="L150">			.append(padLeft(&quot;Split&quot;, maxSplit)).append(&quot; |\n&quot;);</span>
+
+<span class="fc" id="L152">		sb.append(&quot;| &quot;)</span>
+<span class="fc" id="L153">			.append(repeat(maxPlayer)).append(&quot; | &quot;)</span>
+<span class="fc" id="L154">			.append(repeat(maxSplit - 1)).append(&quot;:&quot;).append(&quot; |\n&quot;);</span>
+<span class="fc bfc" id="L155" title="All 2 branches covered.">		for (String[] r : rows)</span>
+		{
+<span class="fc" id="L157">			sb.append(&quot;| &quot;).append(padRight(r[0], maxPlayer)).append(&quot; | &quot;)</span>
+<span class="fc" id="L158">				.append(padLeft(r[1], maxSplit)).append(&quot; |\n&quot;);</span>
+<span class="fc" id="L159">		}</span>
+<span class="fc" id="L160">	}</span>
+
+	private static String padRight(String s, int width)
+	{
+<span class="pc bpc" id="L164" title="1 of 2 branches missed.">		if (s == null)</span>
+		{
+<span class="nc" id="L166">			s = &quot;&quot;;</span>
+		}
+<span class="fc bfc" id="L168" title="All 2 branches covered.">		if (s.length() &gt;= width)</span>
+		{
+<span class="fc" id="L170">			return s;</span>
+		}
+<span class="fc" id="L172">		return s + &quot; &quot;.repeat(width - s.length());</span>
+	}
+
+	private static String padLeft(String s, int width)
+	{
+<span class="pc bpc" id="L177" title="1 of 2 branches missed.">		if (s == null)</span>
+		{
+<span class="nc" id="L179">			s = &quot;&quot;;</span>
+		}
+<span class="fc" id="L181">		return &quot; &quot;.repeat(Math.max(0, width - s.length())) + s;</span>
+	}
+
+	private static String repeat(int count)
+	{
+<span class="pc bpc" id="L186" title="1 of 2 branches missed.">		if (count &lt;= 0)</span>
+		{
+<span class="nc" id="L188">			return &quot;&quot;;</span>
+		}
+<span class="fc" id="L190">		return &quot;-&quot;.repeat(count);</span>
+	}
+
+	/**
+	 * Builds a JSON representation of the player metrics for the current session.
+	 * The method retrieves the current session and computes metrics for each player in that session.
+	 * The metrics are then formatted as a JSON array, where each entry contains the player's name,
+	 * total count, split count, and active player status.
+	 *
+	 * @return A JSON string representing the computed player metrics for the current session.
+	 * Returns an empty JSON array &quot;[]&quot; if no session is active or there are no metrics.
+	 */
+	public static String buildMetricsJson(ManagerSession sessionManager)
+	{
+<span class="pc bpc" id="L204" title="1 of 2 branches missed.">		Session currentSession = sessionManager.isHistoryLoaded()</span>
+<span class="nc" id="L205">			? sessionManager.getCurrentEditableSession().orElse(sessionManager.getCurrentSession().orElse(null))</span>
+<span class="fc" id="L206">			: sessionManager.getCurrentSession().orElse(null);</span>
+<span class="fc" id="L207">		List&lt;PlayerMetrics&gt; data = sessionManager.computeMetricsFor(currentSession, true);</span>
+<span class="fc" id="L208">		StringBuilder sb = new StringBuilder();</span>
+
+<span class="fc" id="L210">		sb.append(&quot;[&quot;);</span>
+<span class="fc bfc" id="L211" title="All 2 branches covered.">		for (int i = 0; i &lt; data.size(); i++)</span>
+		{
+<span class="fc" id="L213">			PlayerMetrics pm = data.get(i);</span>
+<span class="fc" id="L214">			sb.append(&quot;{\&quot;player\&quot;:\&quot;&quot;).append(pm.player).append(&quot;\&quot;,&quot;)</span>
+<span class="fc" id="L215">				.append(&quot;\&quot;total\&quot;:&quot;).append(pm.total).append(&quot;,&quot;)</span>
+<span class="fc" id="L216">				.append(&quot;\&quot;split\&quot;:&quot;).append(pm.split).append(&quot;,&quot;)</span>
+<span class="fc" id="L217">				.append(&quot;\&quot;active\&quot;:&quot;).append(pm.activePlayer).append(&quot;}&quot;);</span>
+<span class="fc bfc" id="L218" title="All 2 branches covered.">			if (i &lt; data.size() - 1)</span>
+			{
+<span class="fc" id="L220">				sb.append(&quot;,&quot;);</span>
+			}
+		}
+<span class="fc" id="L223">		sb.append(&quot;]&quot;);</span>
+
+<span class="fc" id="L225">		return sb.toString();</span>
+	}
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

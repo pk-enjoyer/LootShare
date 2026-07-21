@@ -1,0 +1,185 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Metrics.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">community-lootshare</a> &gt; <a href="index.source.html" class="el_package">com.splitmanager.models</a> &gt; <span class="el_source">Metrics.java</span></div><h1>Metrics.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (c) 2025, pk-enjoyer
+ * SPDX-License-Identifier: BSD-2-Clause
+ */
+
+package com.splitmanager.models;
+
+import com.formdev.flatlaf.extras.FlatSVGIcon;
+import com.splitmanager.views.components.PanelTheme;
+import com.splitmanager.utils.Formats;
+import java.util.Comparator;
+import java.util.List;
+import java.util.stream.Collectors;
+import javax.swing.BorderFactory;
+import javax.swing.JButton;
+import javax.swing.table.AbstractTableModel;
+
+<span class="fc" id="L18">public final class Metrics extends AbstractTableModel</span>
+{
+<span class="fc" id="L20">	private static final FlatSVGIcon REMOVE_ICON = new FlatSVGIcon(</span>
+<span class="fc" id="L21">		Metrics.class.getResource(&quot;/com/splitmanager/icons/sleep.svg&quot;)).derive(16, 16);</span>
+<span class="fc" id="L22">	private static final FlatSVGIcon ADD_ICON = new FlatSVGIcon(</span>
+<span class="fc" id="L23">		Metrics.class.getResource(&quot;/com/splitmanager/icons/sunrise.svg&quot;)).derive(16, 16);</span>
+
+<span class="fc" id="L25">	private final JButton removeBtn = createStyledButton(&quot;/com/splitmanager/icons/sleep.svg&quot;);</span>
+<span class="fc" id="L26">	private final JButton addBtn = createStyledButton(&quot;/com/splitmanager/icons/sunrise.svg&quot;);</span>
+<span class="fc" id="L27">	private List&lt;PlayerMetrics&gt; rows = List.of();</span>
+<span class="fc" id="L28">	private boolean hideTotalColumn = false;</span>
+
+	private static JButton createStyledButton(String iconPath)
+	{
+<span class="fc" id="L32">		JButton btn = new JButton(new FlatSVGIcon(Metrics.class.getResource(iconPath)).derive(16, 16));</span>
+<span class="fc" id="L33">		btn.setBorder(BorderFactory.createLineBorder(PanelTheme.DARK_GRAY));</span>
+<span class="fc" id="L34">		return btn;</span>
+	}
+
+	public void setHideTotalColumn(boolean hide)
+	{
+<span class="fc bfc" id="L39" title="All 2 branches covered.">		if (this.hideTotalColumn != hide)</span>
+		{
+<span class="fc" id="L41">			this.hideTotalColumn = hide;</span>
+<span class="fc" id="L42">			fireTableStructureChanged();</span>
+		}
+<span class="fc" id="L44">	}</span>
+
+	public boolean isHidingTotalColumn()
+	{
+<span class="fc" id="L48">		return hideTotalColumn;</span>
+	}
+
+	public void setData(List&lt;PlayerMetrics&gt; rows)
+	{
+		// Sort: active first, inactive at bottom; stable within groups
+<span class="fc" id="L54">		this.rows = rows.stream()</span>
+<span class="fc bfc" id="L55" title="All 2 branches covered.">			.sorted(Comparator.comparingInt(pm -&gt; pm.activePlayer ? 0 : 1)) // active=true → 0, inactive=false → 1</span>
+<span class="fc" id="L56">			.collect(Collectors.toList());</span>
+<span class="fc" id="L57">		fireTableDataChanged();</span>
+<span class="fc" id="L58">	}</span>
+
+	// Helper for renderers/editors to know if a row is active
+	public boolean isRowActive(int rowIndex)
+	{
+<span class="pc bpc" id="L63" title="1 of 4 branches missed.">		if (rowIndex &lt; 0 || rowIndex &gt;= rows.size())</span>
+		{
+<span class="fc" id="L65">			return false;</span>
+		}
+<span class="fc" id="L67">		return rows.get(rowIndex).activePlayer;</span>
+	}
+
+	@Override
+	public int getRowCount()
+	{
+<span class="fc" id="L73">		return rows.size();</span>
+	}
+
+	@Override
+	public int getColumnCount()
+	{
+<span class="fc bfc" id="L79" title="All 2 branches covered.">		return hideTotalColumn ? 3 : 4;</span>
+	}
+
+	@Override
+	public Object getValueAt(int rowIndex, int columnIndex)
+	{
+<span class="fc" id="L85">		var r = rows.get(rowIndex);</span>
+<span class="fc" id="L86">		boolean active = r.activePlayer;</span>
+<span class="fc bfc" id="L87" title="All 2 branches covered.">		if (!hideTotalColumn)</span>
+		{
+<span class="fc bfc" id="L89" title="All 5 branches covered.">			switch (columnIndex)</span>
+			{
+				case 0:
+<span class="fc" id="L92">					return r.player;</span>
+				case 1:
+<span class="fc" id="L94">					return Formats.OsrsAmountFormatter.toSuffixString(r.total, 'k');</span>
+				case 2:
+<span class="fc" id="L96">					return Formats.OsrsAmountFormatter.toSuffixString(r.split, 'k');</span>
+				case 3:
+<span class="fc" id="L98">					return updateActionButton(active);</span>
+				default:
+<span class="fc" id="L100">					return &quot;&quot;;</span>
+			}
+		}
+		else
+		{
+<span class="fc bfc" id="L105" title="All 4 branches covered.">			switch (columnIndex)</span>
+			{
+				case 0:
+<span class="fc" id="L108">					return r.player;</span>
+				case 1:
+<span class="fc" id="L110">					return Formats.OsrsAmountFormatter.toSuffixString(r.split, 'k');</span>
+				case 2:
+<span class="fc" id="L112">					return updateActionButton(active);</span>
+				default:
+<span class="fc" id="L114">					return &quot;&quot;;</span>
+			}
+		}
+	}
+
+	private JButton updateActionButton(boolean active)
+	{
+<span class="fc" id="L121">		removeBtn.setIcon(REMOVE_ICON);</span>
+<span class="fc" id="L122">		addBtn.setIcon(ADD_ICON);</span>
+<span class="pc bpc" id="L123" title="1 of 2 branches missed.">		return active ? removeBtn : addBtn;</span>
+	}
+
+	@Override
+	public String getColumnName(int column)
+	{
+<span class="fc bfc" id="L129" title="All 2 branches covered.">		if (!hideTotalColumn)</span>
+		{
+<span class="fc bfc" id="L131" title="All 5 branches covered.">			switch (column)</span>
+			{
+				case 0:
+<span class="fc" id="L134">					return &quot;Player&quot;;</span>
+				case 1:
+<span class="fc" id="L136">					return &quot;Total&quot;;</span>
+				case 2:
+<span class="fc" id="L138">					return &quot;Split&quot;;</span>
+				case 3:
+<span class="fc" id="L140">					return &quot;X&quot;;</span>
+				default:
+<span class="fc" id="L142">					return &quot;&quot;;</span>
+			}
+		}
+		else
+		{
+<span class="fc bfc" id="L147" title="All 4 branches covered.">			switch (column)</span>
+			{
+				case 0:
+<span class="fc" id="L150">					return &quot;Player&quot;;</span>
+				case 1:
+<span class="fc" id="L152">					return &quot;Split&quot;;</span>
+				case 2:
+<span class="fc" id="L154">					return &quot;X&quot;;</span>
+				default:
+<span class="fc" id="L156">					return &quot;&quot;;</span>
+			}
+		}
+	}
+
+	@Override
+	public Class&lt;?&gt; getColumnClass(int columnIndex)
+	{
+		// Use Object so we can render either a JButton (active) or a JLabel (inactive) in action col
+<span class="fc" id="L165">		return Object.class;</span>
+	}
+
+	@Override
+	public boolean isCellEditable(int rowIndex, int columnIndex)
+	{
+<span class="fc bfc" id="L171" title="All 2 branches covered.">		int actionCol = hideTotalColumn ? 2 : 3;</span>
+<span class="fc bfc" id="L172" title="All 2 branches covered.">		return columnIndex == actionCol;</span>
+	}
+
+	// Accessor for renderers: raw split value for row
+	public long getRawSplitAt(int rowIndex)
+	{
+<span class="fc bfc" id="L178" title="All 4 branches covered.">		if (rowIndex &lt; 0 || rowIndex &gt;= rows.size())</span>
+		{
+<span class="fc" id="L180">			return 0L;</span>
+		}
+<span class="fc" id="L182">		return rows.get(rowIndex).split;</span>
+	}
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

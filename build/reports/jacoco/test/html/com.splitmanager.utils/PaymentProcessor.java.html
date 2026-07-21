@@ -1,0 +1,139 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PaymentProcessor.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">community-lootshare</a> &gt; <a href="index.source.html" class="el_package">com.splitmanager.utils</a> &gt; <span class="el_source">PaymentProcessor.java</span></div><h1>PaymentProcessor.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (c) 2025, pk-enjoyer
+ * SPDX-License-Identifier: BSD-2-Clause
+ */
+
+package com.splitmanager.utils;
+
+import com.splitmanager.models.PlayerMetrics;
+import com.splitmanager.models.Transfer;
+import java.text.DecimalFormat;
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * Handles payment calculations and formatting for settlements between players.
+ */
+<span class="nc" id="L17">public class PaymentProcessor</span>
+{
+
+	/**
+	 * Compute direct payments as text instructions.
+	 */
+	public static List&lt;String&gt; computeDirectPayments(List&lt;PlayerMetrics&gt; data)
+	{
+<span class="fc" id="L25">		List&lt;PlayerMetrics&gt; receivers = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L26">		List&lt;PlayerMetrics&gt; payers = new ArrayList&lt;&gt;();</span>
+
+<span class="fc bfc" id="L28" title="All 2 branches covered.">		for (PlayerMetrics pm : data)</span>
+		{
+<span class="fc bfc" id="L30" title="All 2 branches covered.">			if (pm.split &gt; 0)</span>
+			{
+<span class="fc" id="L32">				receivers.add(pm);</span>
+			}
+<span class="pc bpc" id="L34" title="1 of 2 branches missed.">			else if (pm.split &lt; 0)</span>
+			{
+<span class="fc" id="L36">				payers.add(pm);</span>
+			}
+<span class="fc" id="L38">		}</span>
+
+<span class="fc" id="L40">		receivers.sort((a, b) -&gt; Long.compare(b.split, a.split));</span>
+<span class="fc" id="L41">		payers.sort((a, b) -&gt; Long.compare(Math.abs(b.split), Math.abs(a.split)));</span>
+
+<span class="fc" id="L43">		List&lt;String&gt; lines = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L44">		DecimalFormat df = Formats.getDecimalFormat();</span>
+
+<span class="fc" id="L46">		int i = 0, j = 0;</span>
+<span class="fc bfc" id="L47" title="All 2 branches covered.">		long recvLeft = receivers.isEmpty() ? 0 : receivers.get(0).split;</span>
+<span class="fc bfc" id="L48" title="All 2 branches covered.">		long payLeft = payers.isEmpty() ? 0 : -payers.get(0).split;</span>
+<span class="pc bpc" id="L49" title="1 of 4 branches missed.">		while (i &lt; receivers.size() &amp;&amp; j &lt; payers.size())</span>
+		{
+<span class="fc" id="L51">			long amt = Math.min(recvLeft, payLeft);</span>
+<span class="pc bpc" id="L52" title="1 of 2 branches missed.">			if (amt &gt; 0)</span>
+			{
+<span class="fc" id="L54">				String from = payers.get(j).player;</span>
+<span class="fc" id="L55">				String to = receivers.get(i).player;</span>
+<span class="fc" id="L56">				lines.add(from + &quot; -&gt; &quot; + to + &quot;: &quot; + df.format(amt));</span>
+<span class="fc" id="L57">				recvLeft -= amt;</span>
+<span class="fc" id="L58">				payLeft -= amt;</span>
+			}
+<span class="fc bfc" id="L60" title="All 2 branches covered.">			if (recvLeft == 0)</span>
+			{
+<span class="fc" id="L62">				i++;</span>
+<span class="fc bfc" id="L63" title="All 2 branches covered.">				if (i &lt; receivers.size())</span>
+				{
+<span class="fc" id="L65">					recvLeft = receivers.get(i).split;</span>
+				}
+			}
+<span class="fc bfc" id="L68" title="All 2 branches covered.">			if (payLeft == 0)</span>
+			{
+<span class="fc" id="L70">				j++;</span>
+<span class="fc bfc" id="L71" title="All 2 branches covered.">				if (j &lt; payers.size())</span>
+				{
+<span class="fc" id="L73">					payLeft = -payers.get(j).split;</span>
+				}
+			}
+<span class="fc" id="L76">		}</span>
+
+<span class="fc" id="L78">		return lines;</span>
+	}
+
+	/**
+	 * Compute direct payments as structured Transfer objects.
+	 */
+	public static List&lt;Transfer&gt; computeDirectPaymentsStructured(List&lt;PlayerMetrics&gt; data)
+	{
+<span class="fc" id="L86">		List&lt;PlayerMetrics&gt; receivers = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L87">		List&lt;PlayerMetrics&gt; payers = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L88" title="All 2 branches covered.">		for (PlayerMetrics pm : data)</span>
+		{
+<span class="fc bfc" id="L90" title="All 2 branches covered.">			if (pm.split &gt; 0)</span>
+			{
+<span class="fc" id="L92">				receivers.add(pm);</span>
+			}
+<span class="pc bpc" id="L94" title="1 of 2 branches missed.">			else if (pm.split &lt; 0)</span>
+			{
+<span class="fc" id="L96">				payers.add(pm);</span>
+			}
+<span class="fc" id="L98">		}</span>
+<span class="fc" id="L99">		receivers.sort((a, b) -&gt; Long.compare(b.split, a.split));</span>
+<span class="fc" id="L100">		payers.sort((a, b) -&gt; Long.compare(Math.abs(b.split), Math.abs(a.split)));</span>
+
+<span class="fc" id="L102">		List&lt;Transfer&gt; out = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L103">		int i = 0, j = 0;</span>
+<span class="fc bfc" id="L104" title="All 2 branches covered.">		long recvLeft = receivers.isEmpty() ? 0 : receivers.get(0).split;</span>
+<span class="fc bfc" id="L105" title="All 2 branches covered.">		long payLeft = payers.isEmpty() ? 0 : -payers.get(0).split;</span>
+
+<span class="pc bpc" id="L107" title="1 of 4 branches missed.">		while (i &lt; receivers.size() &amp;&amp; j &lt; payers.size())</span>
+		{
+<span class="fc" id="L109">			long amt = Math.min(recvLeft, payLeft);</span>
+<span class="pc bpc" id="L110" title="1 of 2 branches missed.">			if (amt &gt; 0)</span>
+			{
+<span class="fc" id="L112">				String from = payers.get(j).player;</span>
+<span class="fc" id="L113">				String to = receivers.get(i).player;</span>
+<span class="fc" id="L114">				out.add(new Transfer(from, to, amt));</span>
+<span class="fc" id="L115">				recvLeft -= amt;</span>
+<span class="fc" id="L116">				payLeft -= amt;</span>
+			}
+<span class="fc bfc" id="L118" title="All 2 branches covered.">			if (recvLeft == 0)</span>
+			{
+<span class="fc" id="L120">				i++;</span>
+<span class="fc bfc" id="L121" title="All 2 branches covered.">				if (i &lt; receivers.size())</span>
+				{
+<span class="fc" id="L123">					recvLeft = receivers.get(i).split;</span>
+				}
+			}
+<span class="fc bfc" id="L126" title="All 2 branches covered.">			if (payLeft == 0)</span>
+			{
+<span class="fc" id="L128">				j++;</span>
+<span class="fc bfc" id="L129" title="All 2 branches covered.">				if (j &lt; payers.size())</span>
+				{
+<span class="fc" id="L131">					payLeft = -payers.get(j).split;</span>
+				}
+			}
+<span class="fc" id="L134">		}</span>
+<span class="fc" id="L135">		return out;</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

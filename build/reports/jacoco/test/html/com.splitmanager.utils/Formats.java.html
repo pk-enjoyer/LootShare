@@ -1,0 +1,287 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Formats.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">community-lootshare</a> &gt; <a href="index.source.html" class="el_package">com.splitmanager.utils</a> &gt; <span class="el_source">Formats.java</span></div><h1>Formats.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (c) 2025, pk-enjoyer
+ * SPDX-License-Identifier: BSD-2-Clause
+ */
+
+package com.splitmanager.utils;
+
+import com.splitmanager.PluginConfig;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.text.DecimalFormat;
+import java.text.ParseException;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.time.format.FormatStyle;
+import java.util.Locale;
+import java.util.regex.Pattern;
+import javax.annotation.Nonnull;
+import javax.swing.JFormattedTextField;
+import lombok.Setter;
+import lombok.extern.slf4j.Slf4j;
+
+<span class="fc" id="L23">@Slf4j</span>
+<span class="nc" id="L24">public class Formats</span>
+{
+<span class="fc" id="L26">	private static final DateTimeFormatter TS = DateTimeFormatter.ofPattern(&quot;yyyy-MM-dd&quot;)</span>
+<span class="fc" id="L27">		.withZone(ZoneId.systemDefault());</span>
+<span class="fc" id="L28">	private static final java.util.Locale LOCALE = java.util.Locale.getDefault();</span>
+<span class="fc" id="L29">	private static final DecimalFormat DF = new DecimalFormat(&quot;#,##0&quot;);</span>
+<span class="fc" id="L30">	private static final DecimalFormat DF_3DP = new DecimalFormat(&quot;#,##0.###&quot;);</span>
+<span class="fc" id="L31">	private static DateTimeFormatter LOCAL_TIME = DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT)</span>
+<span class="fc" id="L32">		.withLocale(java.util.Locale.getDefault())</span>
+<span class="fc" id="L33">		.withZone(ZoneId.systemDefault());</span>
+<span class="fc" id="L34">	private static DateTimeFormatter LOCAL_DATE = DateTimeFormatter.ofPattern(&quot;dd-MMM&quot;, Locale.ENGLISH)</span>
+<span class="fc" id="L35">		.withZone(ZoneId.systemDefault());</span>
+	@Setter
+	private static PluginConfig config;
+
+	public static void updateFormats()
+	{
+<span class="pc bpc" id="L41" title="1 of 2 branches missed.">		if (config != null)</span>
+		{
+			try
+			{
+<span class="fc" id="L45">				String timePattern = config.timeFormat();</span>
+<span class="fc" id="L46">				timePattern = timePattern.replace(&quot;[&quot;, &quot;'['&quot;).replace(&quot;]&quot;, &quot;']'&quot;);</span>
+<span class="fc" id="L47">				LOCAL_TIME = DateTimeFormatter.ofPattern(timePattern)</span>
+<span class="fc" id="L48">					.withZone(ZoneId.systemDefault());</span>
+			}
+<span class="fc" id="L50">			catch (Exception e)</span>
+			{
+<span class="fc" id="L52">				log.warn(&quot;Invalid time format: {}, falling back to default&quot;, config.timeFormat());</span>
+<span class="fc" id="L53">				LOCAL_TIME = DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT)</span>
+<span class="fc" id="L54">					.withLocale(java.util.Locale.getDefault())</span>
+<span class="fc" id="L55">					.withZone(ZoneId.systemDefault());</span>
+<span class="fc" id="L56">			}</span>
+
+			try
+			{
+<span class="fc" id="L60">				String datePattern = config.dateFormat();</span>
+<span class="fc" id="L61">				datePattern = datePattern.replace(&quot;[&quot;, &quot;'['&quot;).replace(&quot;]&quot;, &quot;']'&quot;);</span>
+<span class="fc" id="L62">				LOCAL_DATE = DateTimeFormatter.ofPattern(datePattern, Locale.ENGLISH)</span>
+<span class="fc" id="L63">					.withZone(ZoneId.systemDefault());</span>
+			}
+<span class="fc" id="L65">			catch (Exception e)</span>
+			{
+<span class="fc" id="L67">				log.warn(&quot;Invalid date format: {}, falling back to default&quot;, config.dateFormat());</span>
+<span class="fc" id="L68">				LOCAL_DATE = DateTimeFormatter.ofPattern(&quot;dd-MMM&quot;, Locale.ENGLISH)</span>
+<span class="fc" id="L69">					.withZone(ZoneId.systemDefault());</span>
+<span class="fc" id="L70">			}</span>
+		}
+<span class="fc" id="L72">	}</span>
+
+	public static DateTimeFormatter getDateTime()
+	{
+<span class="fc" id="L76">		return TS;</span>
+	}
+
+	public static DateTimeFormatter getLocalTime()
+	{
+<span class="fc" id="L81">		return LOCAL_TIME;</span>
+	}
+
+	public static DateTimeFormatter getLocalDate()
+	{
+<span class="fc" id="L86">		return LOCAL_DATE;</span>
+	}
+
+	public static DecimalFormat getDecimalFormat()
+	{
+<span class="fc" id="L91">		return DF;</span>
+	}
+
+<span class="fc" id="L94">	public static final class OsrsAmountFormatter extends JFormattedTextField.AbstractFormatter</span>
+	{
+<span class="fc" id="L96">		private static final Pattern P =</span>
+<span class="fc" id="L97">			Pattern.compile(&quot;(?i)^\\s*([0-9]+(?:\\.[0-9]+)?)\\s*([kmb]| coins)?\\s*$&quot;);</span>
+
+		private static BigDecimal getBigDecimal(BigDecimal number, char suffix) throws ParseException
+		{
+<span class="fc" id="L101">			log.debug(&quot;Converting {} to BigDecimal, with {}&quot;, number, suffix);</span>
+<span class="pc bpc" id="L102" title="1 of 2 branches missed.">			if (number.signum() &lt; 0)</span>
+			{
+<span class="nc" id="L104">				throw new ParseException(&quot;Negative not allowed&quot;, 0);</span>
+			}
+
+			long multiplierK;
+<span class="fc bfc" id="L108" title="All 4 branches covered.">			switch (suffix)</span>
+			{
+				case 'k':
+<span class="fc" id="L111">					multiplierK = 1_000L;</span>
+<span class="fc" id="L112">					break;</span>
+				case 'm':
+<span class="fc" id="L114">					multiplierK = 1_000_000L;</span>
+<span class="fc" id="L115">					break;</span>
+				case 'b':
+<span class="fc" id="L117">					multiplierK = 1_000_000_000L;</span>
+<span class="fc" id="L118">					break;</span>
+				default:
+<span class="fc" id="L120">					multiplierK = 1L;</span>
+					break;
+			}
+
+<span class="fc" id="L124">			return number.multiply(BigDecimal.valueOf(multiplierK));</span>
+		}
+
+		/**
+		 * Convert a K-based long amount to a human string with a target suffix.
+		 * Examples:
+		 * amountK=1500, 'm' -&gt; &quot;1.5M&quot;
+		 * amountK=250,  'k' -&gt; &quot;250K&quot;
+		 * amountK=3,    'b' -&gt; &quot;0.003B&quot;
+		 *
+		 * @param amountK value expressed in K-units (thousands)
+		 * @param suffix  desired suffix: 'k', 'm', or 'b' (case-insensitive)
+		 * @return formatted string with suffix
+		 */
+		public static String toSuffixString(long amountK, char suffix)
+		{
+<span class="fc" id="L140">			DecimalFormat localDF = DF;</span>
+<span class="fc" id="L141">			String s = String.valueOf(Character.toLowerCase(suffix));</span>
+			long divK; // how many K per target unit
+<span class="fc bfc" id="L143" title="All 4 branches covered.">			switch (s)</span>
+			{
+				case &quot;k&quot;:
+<span class="fc" id="L146">					divK = 1_000L;</span>
+<span class="fc" id="L147">					break;              // 1 K per K</span>
+				case &quot;m&quot;:
+<span class="fc" id="L149">					divK = 1_000_000L;</span>
+<span class="fc" id="L150">					localDF = DF_3DP;</span>
+<span class="fc" id="L151">					break;          // 1,000 K per M</span>
+				case &quot;b&quot;:
+<span class="fc" id="L153">					divK = 1_000_000_000L;</span>
+<span class="fc" id="L154">					localDF = DF_3DP;</span>
+<span class="fc" id="L155">					break;      // 1,000,000 K per B</span>
+				default:
+<span class="fc" id="L157">					divK = 1L;</span>
+<span class="fc" id="L158">					s = &quot;gp&quot;;</span>
+					break;
+			}
+
+			// Use BigDecimal to avoid precision issues for large numbers
+<span class="fc" id="L163">			BigDecimal val = BigDecimal.valueOf(amountK)</span>
+<span class="fc" id="L164">				.divide(BigDecimal.valueOf(divK), 3, RoundingMode.HALF_UP);</span>
+
+			// Format with up to 3 decimals, trimming trailing zeros
+<span class="fc" id="L167">			String num = localDF.format(val);</span>
+
+			// Uppercase the suffix in output
+<span class="fc" id="L170">			return num + s.toUpperCase();</span>
+		}
+
+		/**
+		 * Overload that accepts a String suffix (&quot;k&quot;, &quot;m&quot;, &quot;b&quot;).
+		 */
+		public static String toSuffixString(long amountK, String suffix)
+		{
+<span class="pc bpc" id="L178" title="1 of 4 branches missed.">			if (suffix == null || suffix.isEmpty())</span>
+			{
+<span class="fc" id="L180">				return toSuffixString(amountK, 'k');</span>
+			}
+<span class="fc" id="L182">			return toSuffixString(amountK, suffix.charAt(0));</span>
+		}
+
+		public static long stringAmountToLongAmount(String amount, PluginConfig config) throws ParseException
+		{
+<span class="fc" id="L187">			String valueStr = amount;</span>
+
+<span class="fc" id="L189">			log.debug(&quot;Parsing amount: {}&quot;, valueStr);</span>
+			// Check if the value has no unit (k, m, b) and append the default
+<span class="fc" id="L191">			java.util.regex.Pattern unitPattern = java.util.regex.Pattern.compile(&quot;(?i)^\\s*([0-9][0-9,]*(?:\\.[0-9]+)?)\\s*([kmb])?\\s*$&quot;);</span>
+<span class="fc" id="L192">			java.util.regex.Matcher matcher = unitPattern.matcher(valueStr);</span>
+
+<span class="fc bfc" id="L194" title="All 2 branches covered.">			if (matcher.matches())</span>
+			{
+<span class="fc" id="L196">				String numberTxt = matcher.group(1);</span>
+<span class="fc" id="L197">				String unitTxt = matcher.group(2);</span>
+<span class="fc" id="L198">				log.debug(&quot;Number: {}, Unit: {}&quot;, numberTxt, unitTxt);</span>
+
+<span class="fc bfc" id="L200" title="All 4 branches covered.">				if (unitTxt == null &amp;&amp; config != null)</span>
+				{
+					// No unit specified, append the default multiplier
+<span class="fc" id="L203">					valueStr = numberTxt + config.defaultValueMultiplier().getValue();</span>
+				}
+<span class="fc" id="L205">				log.debug(&quot;Final value: {}&quot;, valueStr);</span>
+			}
+
+<span class="fc" id="L208">			log.debug(&quot;Parsed amount: {}&quot;, valueStr);</span>
+<span class="fc" id="L209">			Object k = new Formats.OsrsAmountFormatter().stringToValue(valueStr);</span>
+<span class="fc bfc" id="L210" title="All 2 branches covered.">			if (k == null)</span>
+			{
+<span class="fc" id="L212">				throw new ParseException(&quot;Invalid amount&quot;, 0);</span>
+			}
+<span class="fc" id="L214">			return (Long) k;</span>
+		}
+
+		@Override
+		public Object stringToValue(@Nonnull String text) throws ParseException
+		{
+<span class="fc" id="L220">			log.debug(&quot;Parsing bujiamount: {}&quot;, text);</span>
+<span class="fc" id="L221">			String s = text.replace(&quot;,&quot;, &quot;&quot;).trim(); // ignore commas</span>
+<span class="fc bfc" id="L222" title="All 2 branches covered.">			if (s.isEmpty())</span>
+			{
+<span class="fc" id="L224">				return null;</span>
+			}
+
+<span class="fc" id="L227">			java.util.regex.Matcher m = P.matcher(s);</span>
+<span class="fc bfc" id="L228" title="All 2 branches covered.">			if (!m.matches())</span>
+			{
+<span class="fc" id="L230">				throw new ParseException(&quot;Invalid amount&quot;, 0);</span>
+			}
+
+<span class="fc" id="L233">			BigDecimal number = new BigDecimal(m.group(1));</span>
+<span class="fc" id="L234">			String suffixTxt = m.group(2);</span>
+			// If no suffix provided by user, fall back to config default if available
+			char suffix;
+<span class="fc bfc" id="L237" title="All 2 branches covered.">			if (config == null)</span>
+			{
+<span class="fc" id="L239">				log.debug(&quot;No config available, falling back to global config&quot;);</span>
+			}
+<span class="fc bfc" id="L241" title="All 2 branches covered.">			if (suffixTxt == null)</span>
+			{
+<span class="fc" id="L243">				log.debug(&quot;No suffix provided, falling back to config default&quot;);</span>
+<span class="fc bfc" id="L244" title="All 2 branches covered.">				String def = config == null ? null : config.defaultValueMultiplier().getValue();</span>
+<span class="pc bpc" id="L245" title="1 of 4 branches missed.">				suffix = def != null &amp;&amp; !def.isEmpty() ? Character.toLowerCase(def.charAt(0)) : ' ';</span>
+<span class="fc" id="L246">			}</span>
+			else
+			{
+<span class="fc" id="L249">				suffix = Character.toLowerCase(suffixTxt.charAt(0));</span>
+<span class="fc" id="L250">				log.debug(&quot;Suffix provided: {}&quot;, suffix);</span>
+			}
+
+<span class="fc" id="L253">			log.debug(&quot;Parsed amo00unt: {}{}&quot;, number, suffix);</span>
+
+			// Convert to raw coins
+<span class="fc" id="L256">			BigDecimal coinsValue = getBigDecimal(number, suffix);</span>
+			// Return the exact long value (no normalization to K units)
+			try
+			{
+<span class="fc" id="L260">				return coinsValue.setScale(0, RoundingMode.FLOOR).longValueExact();</span>
+			}
+<span class="fc" id="L262">			catch (ArithmeticException e)</span>
+			{
+<span class="fc" id="L264">				ParseException parseException = new ParseException(&quot;Amount is too large&quot;, 0);</span>
+<span class="fc" id="L265">				parseException.initCause(e);</span>
+<span class="fc" id="L266">				throw parseException;</span>
+			}
+		}
+
+		@Override
+		public String valueToString(Object value)
+		{
+<span class="fc bfc" id="L273" title="All 2 branches covered.">			if (value == null)</span>
+			{
+<span class="fc" id="L275">				return &quot;&quot;;</span>
+			}
+<span class="fc" id="L277">			long coins = ((Number) value).longValue();</span>
+<span class="pc bpc" id="L278" title="1 of 4 branches missed.">			String suffix = config == null || config.defaultValueMultiplier() == null</span>
+<span class="fc" id="L279">				? &quot;k&quot;</span>
+<span class="fc" id="L280">				: config.defaultValueMultiplier().getValue();</span>
+<span class="fc" id="L281">			return toSuffixString(coins, suffix);</span>
+		}
+
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

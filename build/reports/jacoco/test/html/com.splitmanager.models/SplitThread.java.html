@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SplitThread.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">community-lootshare</a> &gt; <a href="index.source.html" class="el_package">com.splitmanager.models</a> &gt; <span class="el_source">SplitThread.java</span></div><h1>SplitThread.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (c) 2025, pk-enjoyer
+ * SPDX-License-Identifier: BSD-2-Clause
+ */
+
+package com.splitmanager.models;
+
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import lombok.Getter;
+import lombok.Setter;
+
+/**
+ * Canonical persisted split thread. Segments, not roster events, are authoritative for split math.
+ */
+@Getter
+public class SplitThread
+{
+	private final String id;
+	private final Instant start;
+<span class="fc" id="L24">	private final List&lt;SplitSegment&gt; segments = new ArrayList&lt;&gt;();</span>
+	@Setter
+	private Instant end;
+	@Setter
+	private String pluginVersion;
+	@Setter
+	private SettlementConfigSnapshot settlementConfigAtStart;
+	@Setter
+	private SettlementConfigSnapshot settlementConfigAtEnd;
+	@Setter
+	private Map&lt;String, String&gt; altMappingAtStart;
+	@Setter
+	private Map&lt;String, String&gt; altMappingAtEnd;
+
+	public SplitThread(String id, Instant start)
+<span class="fc" id="L39">	{</span>
+<span class="fc" id="L40">		this.id = id;</span>
+<span class="fc" id="L41">		this.start = start;</span>
+<span class="fc" id="L42">		this.pluginVersion = Session.CURRENT_PLUGIN_VERSION;</span>
+<span class="fc" id="L43">	}</span>
+
+	public Map&lt;String, String&gt; getAltMappingAtStart()
+	{
+<span class="fc bfc" id="L47" title="All 2 branches covered.">		return altMappingAtStart == null ? null : new LinkedHashMap&lt;&gt;(altMappingAtStart);</span>
+	}
+
+	public Map&lt;String, String&gt; getAltMappingAtEnd()
+	{
+<span class="fc bfc" id="L52" title="All 2 branches covered.">		return altMappingAtEnd == null ? null : new LinkedHashMap&lt;&gt;(altMappingAtEnd);</span>
+	}
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SplitSegment.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">community-lootshare</a> &gt; <a href="index.source.html" class="el_package">com.splitmanager.models</a> &gt; <span class="el_source">SplitSegment.java</span></div><h1>SplitSegment.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (c) 2025, pk-enjoyer
+ * SPDX-License-Identifier: BSD-2-Clause
+ */
+
+package com.splitmanager.models;
+
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
+import lombok.Getter;
+import lombok.Setter;
+
+/**
+ * Canonical split calculation segment. One roster applies to every loot event in this segment.
+ */
+@Getter
+public class SplitSegment
+{
+	private final String id;
+	private final Instant start;
+<span class="fc" id="L24">	private final Set&lt;String&gt; roster = new LinkedHashSet&lt;&gt;();</span>
+<span class="fc" id="L25">	private final List&lt;SplitEvent&gt; events = new ArrayList&lt;&gt;();</span>
+	@Setter
+	private Instant end;
+
+	public SplitSegment(String id, Instant start)
+<span class="fc" id="L30">	{</span>
+<span class="fc" id="L31">		this.id = id;</span>
+<span class="fc" id="L32">		this.start = start;</span>
+<span class="fc" id="L33">	}</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

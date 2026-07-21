@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SharedLootItem.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">community-lootshare</a> &gt; <a href="index.source.html" class="el_package">com.communitylootshare.domain</a> &gt; <span class="el_source">SharedLootItem.java</span></div><h1>SharedLootItem.java</h1><pre class="source lang-java linenums">package com.communitylootshare.domain;
+
+public final class SharedLootItem
+{
+	private final int itemId;
+	private final int pricingId;
+	private final long quantity;
+	private final long unitPrice;
+
+	public SharedLootItem(int itemId, int pricingId, long quantity, long unitPrice)
+<span class="fc" id="L11">	{</span>
+<span class="pc bpc" id="L12" title="1 of 4 branches missed.">		if (quantity &lt;= 0 || unitPrice &lt; 0) throw new IllegalArgumentException(&quot;Invalid item quantity or price&quot;);</span>
+<span class="fc" id="L13">		this.itemId = itemId;</span>
+<span class="fc" id="L14">		this.pricingId = pricingId;</span>
+<span class="fc" id="L15">		this.quantity = quantity;</span>
+<span class="fc" id="L16">		this.unitPrice = unitPrice;</span>
+<span class="fc" id="L17">		Math.multiplyExact(quantity, unitPrice);</span>
+<span class="fc" id="L18">	}</span>
+
+<span class="nc" id="L20">	public int getItemId() { return itemId; }</span>
+<span class="nc" id="L21">	public int getPricingId() { return pricingId; }</span>
+<span class="nc" id="L22">	public long getQuantity() { return quantity; }</span>
+<span class="nc" id="L23">	public long getUnitPrice() { return unitPrice; }</span>
+<span class="fc" id="L24">	public long getLineTotal() { return Math.multiplyExact(quantity, unitPrice); }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

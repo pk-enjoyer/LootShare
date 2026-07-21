@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.splitmanager.views.HistoryEditorPanelTest" tests="4" skipped="0" failures="0" errors="0" timestamp="2026-07-21T12:19:09" hostname="Loulord" time="0.273">
+  <properties/>
+  <testcase name="exercisesEditorsRenderersShortcutsPointerAndLocalTransfersHeadlessly" classname="com.splitmanager.views.HistoryEditorPanelTest" time="0.083"/>
+  <testcase name="handlesLockedAndFailedStubbedEditorOperations" classname="com.splitmanager.views.HistoryEditorPanelTest" time="0.038"/>
+  <testcase name="confirmationControlsLinkedRosterDeletion" classname="com.splitmanager.views.HistoryEditorPanelTest" time="0.009"/>
+  <testcase name="supportsHeadlessEditingUndoRedoAndGuardedDeletion" classname="com.splitmanager.views.HistoryEditorPanelTest" time="0.143"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

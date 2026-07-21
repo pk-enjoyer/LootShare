@@ -1,0 +1,572 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SessionStorage.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">community-lootshare</a> &gt; <a href="index.source.html" class="el_package">com.splitmanager.persistence</a> &gt; <span class="el_source">SessionStorage.java</span></div><h1>SessionStorage.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (c) 2025, pk-enjoyer
+ * SPDX-License-Identifier: BSD-2-Clause
+ */
+
+package com.splitmanager.persistence;
+
+import com.google.gson.Gson;
+import com.google.gson.JsonSyntaxException;
+import com.splitmanager.PluginConfig;
+import com.splitmanager.models.Session;
+import com.splitmanager.utils.InstantTypeAdapter;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.FileReader;
+import java.io.IOException;
+import java.io.OutputStreamWriter;
+import java.nio.channels.FileChannel;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Comparator;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
+import javax.inject.Inject;
+import javax.inject.Singleton;
+import lombok.extern.slf4j.Slf4j;
+import net.runelite.client.RuneLite;
+import net.runelite.client.config.ConfigManager;
+import net.runelite.client.config.ConfigProfile;
+
+@Singleton
+<span class="fc" id="L39">@Slf4j</span>
+public class SessionStorage
+{
+	private static final String FILE_SUFFIX = &quot;.auto-split-manager.sessions.json&quot;;
+	private static final String PLUGIN_DIR = &quot;auto-split-manager&quot;;
+	private static final long DEFAULT_MAX_PRIMARY_FILE_BYTES = 5L * 1024L * 1024L;
+
+	private final ConfigManager configManager;
+	private final File fixedFile;
+	private final Gson gson;
+	private final PluginConfig legacyConfig;
+	private final long maxPrimaryFileBytes;
+
+	@Inject
+	public SessionStorage(ConfigManager configManager, Gson gson)
+<span class="fc" id="L54">	{</span>
+<span class="fc" id="L55">		this.configManager = configManager;</span>
+<span class="fc" id="L56">		this.fixedFile = null;</span>
+<span class="fc" id="L57">		this.legacyConfig = null;</span>
+<span class="fc" id="L58">		this.gson = buildGson(gson);</span>
+<span class="fc" id="L59">		this.maxPrimaryFileBytes = DEFAULT_MAX_PRIMARY_FILE_BYTES;</span>
+<span class="fc" id="L60">	}</span>
+
+	public SessionStorage(File fixedFile, Gson gson)
+	{
+<span class="fc" id="L64">		this(fixedFile, gson, DEFAULT_MAX_PRIMARY_FILE_BYTES);</span>
+<span class="fc" id="L65">	}</span>
+
+	public SessionStorage(File fixedFile, Gson gson, long maxPrimaryFileBytes)
+<span class="fc" id="L68">	{</span>
+<span class="fc" id="L69">		this.configManager = null;</span>
+<span class="fc" id="L70">		this.fixedFile = fixedFile;</span>
+<span class="fc" id="L71">		this.legacyConfig = null;</span>
+<span class="fc" id="L72">		this.gson = buildGson(gson);</span>
+<span class="fc" id="L73">		this.maxPrimaryFileBytes = maxPrimaryFileBytes;</span>
+<span class="fc" id="L74">	}</span>
+
+	private SessionStorage(PluginConfig legacyConfig, Gson gson)
+<span class="fc" id="L77">	{</span>
+<span class="fc" id="L78">		this.configManager = null;</span>
+<span class="fc" id="L79">		this.fixedFile = null;</span>
+<span class="fc" id="L80">		this.legacyConfig = legacyConfig;</span>
+<span class="fc" id="L81">		this.gson = buildGson(gson);</span>
+<span class="fc" id="L82">		this.maxPrimaryFileBytes = DEFAULT_MAX_PRIMARY_FILE_BYTES;</span>
+<span class="fc" id="L83">	}</span>
+
+	public static SessionStorage legacyConfig(PluginConfig legacyConfig, Gson gson)
+	{
+<span class="fc" id="L87">		return new SessionStorage(legacyConfig, gson);</span>
+	}
+
+	private static Gson buildGson(Gson gson)
+	{
+<span class="fc" id="L92">		return gson.newBuilder()</span>
+<span class="fc" id="L93">			.registerTypeAdapter(Instant.class, new InstantTypeAdapter())</span>
+<span class="fc" id="L94">			.create();</span>
+	}
+
+	private static String nullToEmpty(String value)
+	{
+<span class="fc bfc" id="L99" title="All 2 branches covered.">		return value == null ? &quot;&quot; : value;</span>
+	}
+
+	private static String emptyToNull(String value)
+	{
+<span class="fc bfc" id="L104" title="All 4 branches covered.">		return value == null || value.isEmpty() ? null : value;</span>
+	}
+
+	private static String sanitizeFileNamePart(String value)
+	{
+<span class="pc bpc" id="L109" title="1 of 4 branches missed.">		if (value == null || value.trim().isEmpty())</span>
+		{
+<span class="fc" id="L111">			return &quot;profile&quot;;</span>
+		}
+<span class="fc" id="L113">		String sanitized = value.trim().replaceAll(&quot;[\\\\/:*?\&quot;&lt;&gt;|\\p{Cntrl}]+&quot;, &quot;_&quot;);</span>
+<span class="fc bfc" id="L114" title="All 2 branches covered.">		while (sanitized.contains(&quot;..&quot;))</span>
+		{
+<span class="fc" id="L116">			sanitized = sanitized.replace(&quot;..&quot;, &quot;_&quot;);</span>
+		}
+<span class="pc bpc" id="L118" title="1 of 2 branches missed.">		return sanitized.isEmpty() ? &quot;profile&quot; : sanitized;</span>
+	}
+
+	public boolean isLegacyConfigStore()
+	{
+<span class="fc bfc" id="L123" title="All 2 branches covered.">		return legacyConfig != null;</span>
+	}
+
+	public boolean exists()
+	{
+<span class="fc bfc" id="L128" title="All 2 branches covered.">		if (isLegacyConfigStore())</span>
+		{
+<span class="fc" id="L130">			return hasLegacyData(legacyConfig);</span>
+		}
+<span class="fc" id="L132">		File file = resolveFile();</span>
+<span class="fc bfc" id="L133" title="All 4 branches covered.">		return file != null &amp;&amp; file.exists();</span>
+	}
+
+	public SessionStorageData load()
+	{
+<span class="fc bfc" id="L138" title="All 2 branches covered.">		if (isLegacyConfigStore())</span>
+		{
+<span class="fc" id="L140">			return loadLegacy(legacyConfig);</span>
+		}
+
+<span class="fc" id="L143">		File file = resolveFile();</span>
+<span class="pc bpc" id="L144" title="1 of 4 branches missed.">		if (file == null || !file.exists())</span>
+		{
+<span class="fc" id="L146">			return new SessionStorageData();</span>
+		}
+
+<span class="fc" id="L149">		try (FileReader reader = new FileReader(file, StandardCharsets.UTF_8))</span>
+		{
+<span class="fc" id="L151">			SessionStorageData data = gson.fromJson(reader, SessionStorageData.class);</span>
+<span class="fc bfc" id="L152" title="All 2 branches covered.">			if (data == null)</span>
+			{
+<span class="fc" id="L154">				return new SessionStorageData();</span>
+			}
+<span class="fc bfc" id="L156" title="All 2 branches covered.">			if (data.getSchemaVersion() &gt; SessionStorageData.CURRENT_SCHEMA_VERSION)</span>
+			{
+<span class="fc" id="L158">				log.warn(&quot;Session storage schema {} is newer than supported schema {} in {}&quot;,</span>
+<span class="fc" id="L159">					data.getSchemaVersion(), SessionStorageData.CURRENT_SCHEMA_VERSION, file);</span>
+<span class="fc" id="L160">				return new SessionStorageData();</span>
+			}
+<span class="fc" id="L162">			data.getSessions();</span>
+<span class="fc" id="L163">			return data;</span>
+<span class="fc" id="L164">		}</span>
+<span class="fc" id="L165">		catch (IOException | JsonSyntaxException e)</span>
+		{
+<span class="fc" id="L167">			log.warn(&quot;Failed to load session storage from {}&quot;, file, e);</span>
+<span class="fc" id="L168">			return new SessionStorageData();</span>
+		}
+	}
+
+	public boolean save(SessionStorageData data)
+	{
+<span class="fc bfc" id="L174" title="All 2 branches covered.">		if (isLegacyConfigStore())</span>
+		{
+<span class="fc" id="L176">			return saveLegacy(data);</span>
+		}
+
+<span class="fc" id="L179">		File file = resolveFile();</span>
+<span class="fc bfc" id="L180" title="All 2 branches covered.">		if (file == null)</span>
+		{
+<span class="fc" id="L182">			log.warn(&quot;Cannot save session storage because no RuneLite profile file could be resolved&quot;);</span>
+<span class="fc" id="L183">			return false;</span>
+		}
+
+<span class="fc" id="L186">		return writeDataToFile(file, data);</span>
+	}
+
+	public boolean backupPrimaryIfExists(String label)
+	{
+<span class="fc bfc" id="L191" title="All 2 branches covered.">		if (isLegacyConfigStore())</span>
+		{
+<span class="fc" id="L193">			return false;</span>
+		}
+<span class="fc" id="L195">		File file = resolveFile();</span>
+<span class="pc bpc" id="L196" title="1 of 4 branches missed.">		if (file == null || !file.exists())</span>
+		{
+<span class="fc" id="L198">			return false;</span>
+		}
+<span class="pc bpc" id="L200" title="1 of 2 branches missed.">		String safeLabel = sanitizeFileNamePart(label == null ? &quot;backup&quot; : label);</span>
+<span class="fc" id="L201">		File backup = new File(file.getParentFile(), file.getName() + &quot;.&quot; + safeLabel + &quot;.&quot; + System.currentTimeMillis() + &quot;.bak&quot;);</span>
+		try
+		{
+<span class="fc" id="L204">			Files.copy(file.toPath(), backup.toPath(), StandardCopyOption.COPY_ATTRIBUTES);</span>
+<span class="fc" id="L205">			return true;</span>
+		}
+<span class="nc" id="L207">		catch (IOException e)</span>
+		{
+<span class="nc" id="L209">			log.warn(&quot;Failed to back up session storage {} to {}&quot;, file, backup, e);</span>
+<span class="nc" id="L210">			return false;</span>
+		}
+	}
+
+	public Optional&lt;SessionStorageData&gt; archivePrimaryIfNeeded()
+	{
+<span class="pc bpc" id="L216" title="1 of 4 branches missed.">		if (isLegacyConfigStore() || maxPrimaryFileBytes &lt;= 0L)</span>
+		{
+<span class="fc" id="L218">			return Optional.empty();</span>
+		}
+
+<span class="fc" id="L221">		File file = resolveFile();</span>
+<span class="pc bpc" id="L222" title="1 of 6 branches missed.">		if (file == null || !file.exists() || file.length() &lt;= maxPrimaryFileBytes)</span>
+		{
+<span class="fc" id="L224">			return Optional.empty();</span>
+		}
+
+<span class="fc" id="L227">		SessionStorageData data = load();</span>
+<span class="fc bfc" id="L228" title="All 2 branches covered.">		return archiveOverflowIfNeeded(file, data) ? Optional.of(data) : Optional.empty();</span>
+	}
+
+	private boolean writeDataToFile(File file, SessionStorageData data)
+	{
+		try
+		{
+<span class="fc" id="L235">			File parent = file.getParentFile();</span>
+<span class="pc bpc" id="L236" title="1 of 2 branches missed.">			if (parent != null)</span>
+			{
+<span class="fc" id="L238">				Files.createDirectories(parent.toPath());</span>
+			}
+
+<span class="fc" id="L241">			File temp = File.createTempFile(file.getName(), &quot;.tmp&quot;, parent);</span>
+<span class="fc" id="L242">			try (FileOutputStream out = new FileOutputStream(temp);</span>
+<span class="fc" id="L243">			     FileChannel channel = out.getChannel();</span>
+<span class="fc" id="L244">			     OutputStreamWriter writer = new OutputStreamWriter(out, StandardCharsets.UTF_8))</span>
+			{
+<span class="fc" id="L246">				data.setSchemaVersion(SessionStorageData.CURRENT_SCHEMA_VERSION);</span>
+<span class="fc" id="L247">				gson.toJson(data, writer);</span>
+<span class="fc" id="L248">				writer.flush();</span>
+<span class="fc" id="L249">				channel.force(true);</span>
+			}
+
+			try
+			{
+<span class="fc" id="L254">				Files.move(temp.toPath(), file.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);</span>
+			}
+<span class="nc" id="L256">			catch (AtomicMoveNotSupportedException e)</span>
+			{
+<span class="nc" id="L258">				Files.move(temp.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING);</span>
+<span class="fc" id="L259">			}</span>
+<span class="fc" id="L260">			return true;</span>
+		}
+<span class="fc" id="L262">		catch (IOException e)</span>
+		{
+<span class="fc" id="L264">			log.warn(&quot;Failed to save session storage to {}&quot;, file, e);</span>
+<span class="fc" id="L265">			return false;</span>
+		}
+	}
+
+	private boolean archiveOverflowIfNeeded(File file, SessionStorageData data)
+	{
+<span class="pc bpc" id="L271" title="2 of 4 branches missed.">		if (maxPrimaryFileBytes &lt;= 0L || file.length() &lt;= maxPrimaryFileBytes)</span>
+		{
+<span class="nc" id="L273">			return false;</span>
+		}
+
+<span class="fc" id="L276">		ArchiveSplit split = splitForArchive(data);</span>
+<span class="fc bfc" id="L277" title="All 2 branches covered.">		if (split.archiveSessions.isEmpty())</span>
+		{
+<span class="fc" id="L279">			log.warn(&quot;Session storage {} exceeds {} bytes, but no completed history can be archived&quot;, file, maxPrimaryFileBytes);</span>
+<span class="fc" id="L280">			return false;</span>
+		}
+
+<span class="fc" id="L283">		boolean archived = false;</span>
+<span class="fc bfc" id="L284" title="All 2 branches covered.">		while (!split.archiveSessions.isEmpty())</span>
+		{
+<span class="fc" id="L286">			File archiveFile = nextArchiveFile(file);</span>
+<span class="fc" id="L287">			SessionStorageData archiveData = new SessionStorageData();</span>
+<span class="fc" id="L288">			archiveData.setSessions(split.archiveSessions);</span>
+<span class="pc bpc" id="L289" title="1 of 2 branches missed.">			if (!writeDataToFile(archiveFile, archiveData))</span>
+			{
+<span class="nc" id="L291">				log.warn(&quot;Could not archive old sessions to {}; keeping primary storage unchanged&quot;, archiveFile);</span>
+<span class="nc" id="L292">				return archived;</span>
+			}
+
+<span class="pc bpc" id="L295" title="1 of 2 branches missed.">			if (!writeDataToFile(file, split.primaryData))</span>
+			{
+<span class="nc" id="L297">				log.warn(&quot;Archived old sessions to {}, but failed to rewrite primary storage {}&quot;, archiveFile, file);</span>
+<span class="nc" id="L298">				return archived;</span>
+			}
+<span class="fc" id="L300">			copyStorageData(split.primaryData, data);</span>
+<span class="fc" id="L301">			archived = true;</span>
+
+<span class="fc bfc" id="L303" title="All 2 branches covered.">			if (file.length() &lt;= maxPrimaryFileBytes)</span>
+			{
+<span class="fc" id="L305">				return true;</span>
+			}
+
+<span class="fc" id="L308">			split = splitForArchive(split.primaryData);</span>
+<span class="fc" id="L309">		}</span>
+
+<span class="pc bpc" id="L311" title="1 of 2 branches missed.">		if (file.length() &gt; maxPrimaryFileBytes)</span>
+		{
+<span class="fc" id="L313">			log.warn(&quot;Session storage {} still exceeds {} bytes after archiving all eligible history&quot;, file, maxPrimaryFileBytes);</span>
+		}
+<span class="fc" id="L315">		return archived;</span>
+	}
+
+	private void copyStorageData(SessionStorageData source, SessionStorageData target)
+	{
+<span class="fc" id="L320">		target.setSchemaVersion(source.getSchemaVersion());</span>
+<span class="fc" id="L321">		target.setSessions(new ArrayList&lt;&gt;(source.getSessions()));</span>
+<span class="fc" id="L322">		target.setCurrentSessionId(source.getCurrentSessionId());</span>
+<span class="fc" id="L323">		target.setHistoryLoaded(source.isHistoryLoaded());</span>
+<span class="fc" id="L324">	}</span>
+
+	private ArchiveSplit splitForArchive(SessionStorageData data)
+	{
+<span class="fc" id="L328">		List&lt;Session&gt; sessions = new ArrayList&lt;&gt;(data.getSessions());</span>
+<span class="fc" id="L329">		String currentRootId = findCurrentRootId(sessions, data.getCurrentSessionId());</span>
+
+<span class="fc" id="L331">		List&lt;String&gt; candidateRootIds = sessions.stream()</span>
+<span class="pc bpc" id="L332" title="1 of 4 branches missed.">			.filter(session -&gt; session != null &amp;&amp; session.getMotherId() == null)</span>
+<span class="fc bfc" id="L333" title="All 2 branches covered.">			.filter(session -&gt; !session.isActive())</span>
+<span class="pc bpc" id="L334" title="1 of 4 branches missed.">			.filter(session -&gt; currentRootId == null || !currentRootId.equals(session.getId()))</span>
+<span class="fc" id="L335">			.sorted(Comparator.comparing(Session::getStart))</span>
+<span class="fc" id="L336">			.map(Session::getId)</span>
+<span class="fc" id="L337">			.collect(java.util.stream.Collectors.toList());</span>
+
+<span class="fc bfc" id="L339" title="All 2 branches covered.">		if (candidateRootIds.isEmpty())</span>
+		{
+<span class="fc" id="L341">			return new ArchiveSplit(data, List.of());</span>
+		}
+
+<span class="fc" id="L344">		List&lt;Session&gt; retainedSessions = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L345">		List&lt;Session&gt; archivedSessions = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L346">		Set&lt;String&gt; archivedRootIds = new LinkedHashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L347" title="All 2 branches covered.">		for (String candidateRootId : candidateRootIds)</span>
+		{
+<span class="fc" id="L349">			archivedRootIds.add(candidateRootId);</span>
+<span class="fc" id="L350">			retainedSessions.clear();</span>
+<span class="fc" id="L351">			archivedSessions.clear();</span>
+<span class="fc bfc" id="L352" title="All 2 branches covered.">			for (Session session : sessions)</span>
+			{
+<span class="fc" id="L354">				String rootId = rootId(session);</span>
+<span class="pc bpc" id="L355" title="1 of 4 branches missed.">				if (rootId != null &amp;&amp; archivedRootIds.contains(rootId))</span>
+				{
+<span class="fc" id="L357">					archivedSessions.add(session);</span>
+				}
+				else
+				{
+<span class="fc" id="L361">					retainedSessions.add(session);</span>
+				}
+<span class="fc" id="L363">			}</span>
+
+<span class="fc" id="L365">			SessionStorageData retained = new SessionStorageData();</span>
+<span class="fc" id="L366">			retained.setSessions(new ArrayList&lt;&gt;(retainedSessions));</span>
+<span class="fc" id="L367">			retained.setCurrentSessionId(data.getCurrentSessionId());</span>
+<span class="fc" id="L368">			retained.setHistoryLoaded(data.isHistoryLoaded());</span>
+<span class="fc bfc" id="L369" title="All 2 branches covered.">			if (serializedSize(retained) &lt;= maxPrimaryFileBytes)</span>
+			{
+<span class="fc" id="L371">				return new ArchiveSplit(retained, new ArrayList&lt;&gt;(archivedSessions));</span>
+			}
+<span class="fc" id="L373">		}</span>
+
+<span class="fc" id="L375">		SessionStorageData retained = new SessionStorageData();</span>
+<span class="fc" id="L376">		retained.setSessions(new ArrayList&lt;&gt;(retainedSessions));</span>
+<span class="fc" id="L377">		retained.setCurrentSessionId(data.getCurrentSessionId());</span>
+<span class="fc" id="L378">		retained.setHistoryLoaded(data.isHistoryLoaded());</span>
+<span class="fc" id="L379">		return new ArchiveSplit(retained, new ArrayList&lt;&gt;(archivedSessions));</span>
+	}
+
+	private String findCurrentRootId(List&lt;Session&gt; sessions, String currentSessionId)
+	{
+<span class="fc bfc" id="L384" title="All 2 branches covered.">		if (currentSessionId == null)</span>
+		{
+<span class="fc" id="L386">			return null;</span>
+		}
+<span class="pc bpc" id="L388" title="1 of 2 branches missed.">		for (Session session : sessions)</span>
+		{
+<span class="pc bpc" id="L390" title="1 of 4 branches missed.">			if (session != null &amp;&amp; currentSessionId.equals(session.getId()))</span>
+			{
+<span class="fc" id="L392">				return rootId(session);</span>
+			}
+<span class="fc" id="L394">		}</span>
+<span class="nc" id="L395">		return null;</span>
+	}
+
+	private String rootId(Session session)
+	{
+<span class="pc bpc" id="L400" title="1 of 2 branches missed.">		if (session == null)</span>
+		{
+<span class="nc" id="L402">			return null;</span>
+		}
+<span class="fc bfc" id="L404" title="All 2 branches covered.">		return session.getMotherId() == null ? session.getId() : session.getMotherId();</span>
+	}
+
+	private long serializedSize(SessionStorageData data)
+	{
+<span class="fc" id="L409">		data.setSchemaVersion(SessionStorageData.CURRENT_SCHEMA_VERSION);</span>
+<span class="fc" id="L410">		return gson.toJson(data).getBytes(StandardCharsets.UTF_8).length;</span>
+	}
+
+	private File nextArchiveFile(File primaryFile)
+	{
+<span class="fc" id="L415">		File parent = primaryFile.getParentFile();</span>
+<span class="fc" id="L416">		String baseName = archiveBaseName(primaryFile);</span>
+<span class="fc" id="L417">		int index = 1;</span>
+		File candidate;
+		do
+		{
+<span class="fc" id="L421">			candidate = new File(parent, baseName + &quot;.archive-&quot; + String.format(&quot;%03d&quot;, index) + FILE_SUFFIX);</span>
+<span class="fc" id="L422">			index++;</span>
+		}
+<span class="pc bpc" id="L424" title="1 of 2 branches missed.">		while (candidate.exists());</span>
+<span class="fc" id="L425">		return candidate;</span>
+	}
+
+	private String archiveBaseName(File primaryFile)
+	{
+<span class="fc" id="L430">		String name = primaryFile.getName();</span>
+<span class="fc bfc" id="L431" title="All 2 branches covered.">		if (name.endsWith(FILE_SUFFIX))</span>
+		{
+<span class="fc" id="L433">			return name.substring(0, name.length() - FILE_SUFFIX.length());</span>
+		}
+<span class="fc" id="L435">		return name;</span>
+	}
+
+	public boolean hasArchives()
+	{
+<span class="fc" id="L440">		File file = resolveFile();</span>
+<span class="fc bfc" id="L441" title="All 2 branches covered.">		if (file == null)</span>
+		{
+<span class="fc" id="L443">			return false;</span>
+		}
+<span class="fc" id="L445">		File parent = file.getParentFile();</span>
+<span class="pc bpc" id="L446" title="1 of 4 branches missed.">		if (parent == null || !parent.isDirectory())</span>
+		{
+<span class="fc" id="L448">			return false;</span>
+		}
+<span class="fc" id="L450">		String baseName = archiveBaseName(file);</span>
+<span class="fc" id="L451">		String prefix = baseName + &quot;.archive-&quot;;</span>
+<span class="pc bpc" id="L452" title="1 of 4 branches missed.">		File[] archiveFiles = parent.listFiles((dir, name) -&gt; name.startsWith(prefix) &amp;&amp; name.endsWith(FILE_SUFFIX));</span>
+<span class="pc bpc" id="L453" title="1 of 4 branches missed.">		return archiveFiles != null &amp;&amp; archiveFiles.length &gt; 0;</span>
+	}
+
+	private static final class ArchiveSplit
+	{
+		private final SessionStorageData primaryData;
+		private final List&lt;Session&gt; archiveSessions;
+
+		private ArchiveSplit(SessionStorageData primaryData, List&lt;Session&gt; archiveSessions)
+<span class="fc" id="L462">		{</span>
+<span class="fc" id="L463">			this.primaryData = primaryData;</span>
+<span class="fc" id="L464">			this.archiveSessions = archiveSessions;</span>
+<span class="fc" id="L465">		}</span>
+	}
+
+	public void clearLegacySessionConfig(PluginConfig config)
+	{
+<span class="fc bfc" id="L470" title="All 2 branches covered.">		if (configManager != null)</span>
+		{
+<span class="fc" id="L472">			configManager.unsetConfiguration(PluginConfig.GROUP, PluginConfig.KEY_SESSIONS_JSON);</span>
+<span class="fc" id="L473">			configManager.unsetConfiguration(PluginConfig.GROUP, PluginConfig.KEY_CURRENT_SESSION_ID);</span>
+<span class="fc" id="L474">			configManager.unsetConfiguration(PluginConfig.GROUP, PluginConfig.KEY_HISTORY_LOADED);</span>
+<span class="fc" id="L475">			return;</span>
+		}
+
+<span class="fc" id="L478">		config.sessionsJson(&quot;&quot;);</span>
+<span class="fc" id="L479">		config.currentSessionId(&quot;&quot;);</span>
+<span class="fc" id="L480">		config.historyLoaded(false);</span>
+<span class="fc" id="L481">	}</span>
+
+	public String describeLocation()
+	{
+<span class="fc" id="L485">		File file = resolveFile();</span>
+<span class="fc bfc" id="L486" title="All 2 branches covered.">		return file == null ? &quot;unresolved session storage&quot; : file.toString();</span>
+	}
+
+	private File resolveFile()
+	{
+<span class="fc bfc" id="L491" title="All 2 branches covered.">		if (fixedFile != null)</span>
+		{
+<span class="fc" id="L493">			return fixedFile;</span>
+		}
+<span class="fc bfc" id="L495" title="All 4 branches covered.">		if (configManager == null || configManager.getProfile() == null)</span>
+		{
+<span class="fc" id="L497">			return null;</span>
+		}
+<span class="fc" id="L499">		ConfigProfile profile = configManager.getProfile();</span>
+<span class="fc" id="L500">		File pluginDir = new File(RuneLite.RUNELITE_DIR, PLUGIN_DIR);</span>
+<span class="fc" id="L501">		return new File(pluginDir, sanitizeFileNamePart(profile.getName()) + &quot;-&quot; + profile.getId() + FILE_SUFFIX);</span>
+	}
+
+	public boolean hasLegacyData(PluginConfig config)
+	{
+<span class="fc" id="L506">		String sessionsJson = config.sessionsJson();</span>
+<span class="fc" id="L507">		String currentSessionId = config.currentSessionId();</span>
+<span class="pc bpc" id="L508" title="4 of 6 branches missed.">		return (sessionsJson != null &amp;&amp; !sessionsJson.trim().isEmpty())</span>
+<span class="nc bnc" id="L509" title="All 2 branches missed.">			|| (currentSessionId != null &amp;&amp; !currentSessionId.trim().isEmpty())</span>
+<span class="pc bnc" id="L510" title="All 2 branches missed.">			|| config.historyLoaded();</span>
+	}
+
+	public boolean canMigrateLegacy(PluginConfig config)
+	{
+<span class="fc" id="L515">		String json = config.sessionsJson();</span>
+<span class="pc bpc" id="L516" title="1 of 4 branches missed.">		if (json == null || json.trim().isEmpty())</span>
+		{
+<span class="fc" id="L518">			return true;</span>
+		}
+		try
+		{
+<span class="fc" id="L522">			gson.fromJson(json, Session[].class);</span>
+<span class="fc" id="L523">			return true;</span>
+		}
+<span class="fc" id="L525">		catch (Exception e)</span>
+		{
+<span class="fc" id="L527">			log.warn(&quot;Legacy session config JSON is invalid and will not be migrated&quot;, e);</span>
+<span class="fc" id="L528">			return false;</span>
+		}
+	}
+
+	public SessionStorageData loadLegacy(PluginConfig config)
+	{
+<span class="fc" id="L534">		SessionStorageData data = new SessionStorageData();</span>
+<span class="fc" id="L535">		String json = config.sessionsJson();</span>
+<span class="pc bpc" id="L536" title="2 of 4 branches missed.">		if (json != null &amp;&amp; !json.isEmpty())</span>
+		{
+			try
+			{
+<span class="fc" id="L540">				Session[] arr = gson.fromJson(json, Session[].class);</span>
+<span class="pc bpc" id="L541" title="1 of 2 branches missed.">				if (arr != null)</span>
+				{
+<span class="fc" id="L543">					data.setSessions(Arrays.asList(arr));</span>
+				}
+			}
+<span class="fc" id="L546">			catch (Exception e)</span>
+			{
+<span class="fc" id="L548">				log.warn(&quot;Failed to load sessions from legacy config JSON&quot;, e);</span>
+<span class="fc" id="L549">			}</span>
+		}
+<span class="fc" id="L551">		data.setCurrentSessionId(emptyToNull(config.currentSessionId()));</span>
+<span class="fc" id="L552">		data.setHistoryLoaded(config.historyLoaded());</span>
+<span class="fc" id="L553">		return data;</span>
+	}
+
+	private boolean saveLegacy(SessionStorageData data)
+	{
+		try
+		{
+<span class="fc" id="L560">			legacyConfig.sessionsJson(gson.toJson(data.getSessions().toArray(new Session[0])));</span>
+<span class="fc" id="L561">			legacyConfig.currentSessionId(nullToEmpty(data.getCurrentSessionId()));</span>
+<span class="fc" id="L562">			legacyConfig.historyLoaded(data.isHistoryLoaded());</span>
+<span class="fc" id="L563">			return true;</span>
+		}
+<span class="fc" id="L565">		catch (Exception e)</span>
+		{
+<span class="fc" id="L567">			log.warn(&quot;Failed to save sessions to legacy config&quot;, e);</span>
+<span class="fc" id="L568">			return false;</span>
+		}
+	}
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

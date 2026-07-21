@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.communitylootshare.domain.SharedLootEventTest" tests="2" skipped="0" failures="0" errors="0" timestamp="2026-07-21T12:19:05" hostname="Loulord" time="0.019">
+  <properties/>
+  <testcase name="rejectsInvalidQuantity" classname="com.communitylootshare.domain.SharedLootEventTest" time="0.005"/>
+  <testcase name="totalsUseImmutableSnapshots" classname="com.communitylootshare.domain.SharedLootEventTest" time="0.013"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

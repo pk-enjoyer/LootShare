@@ -1,0 +1,2331 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ManagerSession.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">community-lootshare</a> &gt; <a href="index.source.html" class="el_package">com.splitmanager</a> &gt; <span class="el_source">ManagerSession.java</span></div><h1>ManagerSession.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (c) 2025, pk-enjoyer
+ * SPDX-License-Identifier: BSD-2-Clause
+ */
+
+package com.splitmanager;
+
+import com.google.gson.Gson;
+import com.splitmanager.models.SplitEvent;
+import com.splitmanager.models.PendingValue;
+import com.splitmanager.models.PlayerMetrics;
+import com.splitmanager.models.Session;
+import com.splitmanager.models.SettlementConfigSnapshot;
+import com.splitmanager.persistence.SessionStorage;
+import com.splitmanager.persistence.SessionStorageData;
+import com.splitmanager.sessions.SplitCalculator;
+import com.splitmanager.sessions.SplitThreadAdapter;
+import com.splitmanager.utils.Formats;
+import com.splitmanager.utils.InstantTypeAdapter;
+import java.text.ParseException;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
+import java.util.function.BooleanSupplier;
+import java.util.stream.Collectors;
+import javax.inject.Inject;
+import javax.inject.Singleton;
+import lombok.Getter;
+import lombok.Setter;
+import lombok.extern.slf4j.Slf4j;
+
+/**
+ * Manages sessions, persistence, and all the logic for roster changes,
+ * child sessions, and live split calculations.
+ */
+@Singleton
+<span class="fc" id="L46">@Slf4j</span>
+public class ManagerSession
+{
+	private static final String MIN_HISTORY_EDIT_VERSION = Session.CURRENT_PLUGIN_VERSION;
+	private static final int MAX_HISTORY_EDIT_UNDO_STEPS = 50;
+
+	private final Gson gson;
+<span class="fc" id="L53">	private final Map&lt;String, Session&gt; sessions = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L54">	private final List&lt;PendingValue&gt; pendingValues = new ArrayList&lt;&gt;();</span>
+	private final ManagerKnownPlayers playerManager;
+	private final PluginConfig config;
+	private final ManagerPlugin pluginManager;
+	private final SessionStorage sessionStorage;
+	private final SplitCalculator splitCalculator;
+<span class="fc" id="L60">	private final List&lt;HistoryEditSnapshot&gt; historyEditUndoStack = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L61">	private final List&lt;HistoryEditSnapshot&gt; historyEditRedoStack = new ArrayList&lt;&gt;();</span>
+	// Cache of all events grouped by mother session id to avoid recomputing on every UI refresh
+<span class="fc" id="L63">	private final Map&lt;String, List&lt;SplitEvent&gt;&gt; motherEventsCache = new LinkedHashMap&lt;&gt;();</span>
+	@Setter
+	private BooleanSupplier historyEditWarningHandler;
+	private boolean historyEditWarningAccepted;
+	@Getter
+	private boolean historyDirty;
+	private String historyOriginalSessionsJson;
+	private String currentSessionId;
+	private String lastMoveEventFailureMessage;
+	@Getter
+	private boolean historyLoaded;
+
+	/**
+	 * Construct a new ManagerSession bound to the session storage.
+	 * This instance owns all in-memory session state and persists it via a versioned JSON file.
+	 *
+	 * @param config backing configuration/store used to load and save state
+	 */
+	@Inject
+	public ManagerSession(PluginConfig config, ManagerKnownPlayers playerManager, ManagerPlugin pluginManager, Gson gson,
+	                      SessionStorage sessionStorage)
+<span class="fc" id="L84">	{</span>
+<span class="fc" id="L85">		this.config = config;</span>
+<span class="fc" id="L86">		this.playerManager = playerManager;</span>
+		// Use injected client's Gson, customize via newBuilder per guidelines
+<span class="fc" id="L88">		this.gson = gson.newBuilder()</span>
+<span class="fc" id="L89">			.registerTypeAdapter(Instant.class, new InstantTypeAdapter())</span>
+<span class="fc" id="L90">			.create();</span>
+<span class="fc" id="L91">		this.pluginManager = pluginManager;</span>
+<span class="fc" id="L92">		this.sessionStorage = sessionStorage;</span>
+<span class="fc" id="L93">		this.splitCalculator = new SplitCalculator();</span>
+<span class="fc" id="L94">	}</span>
+
+	public ManagerSession(PluginConfig config, ManagerKnownPlayers playerManager, ManagerPlugin pluginManager, Gson gson)
+	{
+<span class="fc" id="L98">		this(config, playerManager, pluginManager, gson, SessionStorage.legacyConfig(config, gson));</span>
+<span class="fc" id="L99">	}</span>
+
+	/**
+	 * Utility: convert empty string to null when reading config values.
+	 */
+	private static String emptyToNull(String s)
+	{
+<span class="pc bpc" id="L106" title="1 of 4 branches missed.">		return s == null || s.isEmpty() ? null : s;</span>
+	}
+
+	/**
+	 * Force a full rebuild of the events cache for the current session's thread.
+	 */
+	public void invalidateEventsCache()
+	{
+<span class="fc" id="L114">		getCurrentSession().ifPresent(curr -&gt; {</span>
+<span class="fc bfc" id="L115" title="All 2 branches covered.">			String motherId = (curr.getMotherId() == null) ? curr.getId() : curr.getMotherId();</span>
+<span class="fc" id="L116">			motherEventsCache.remove(motherId);</span>
+<span class="fc" id="L117">		});</span>
+<span class="fc" id="L118">	}</span>
+
+	public void insertLootAt(int index, String player, Long amount)
+	{
+<span class="fc" id="L122">		Session editable = getCurrentEditableSession().orElse(null);</span>
+<span class="fc bfc" id="L123" title="All 4 branches covered.">		if (editable == null || amount == null)</span>
+		{
+<span class="fc" id="L125">			return;</span>
+		}
+
+<span class="fc" id="L128">		List&lt;SplitEvent&gt; allEvents = getAllEvents();</span>
+<span class="fc bfc" id="L129" title="All 4 branches covered.">		if (index &lt; 0 || index &gt; allEvents.size())</span>
+		{
+<span class="fc" id="L131">			return;</span>
+		}
+
+<span class="fc" id="L134">		String mainPlayer = resolveMainName(player);</span>
+<span class="fc bfc" id="L135" title="All 2 branches covered.">		if (mainPlayer == null)</span>
+		{
+<span class="fc" id="L137">			return;</span>
+		}
+<span class="fc bfc" id="L139" title="All 2 branches covered.">		if (!prepareHistoryMutation())</span>
+		{
+<span class="fc" id="L141">			return;</span>
+		}
+
+<span class="fc" id="L144">		String targetSessionId = editable.getId();</span>
+<span class="pc bpc" id="L145" title="1 of 2 branches missed.">		if (!allEvents.isEmpty())</span>
+		{
+<span class="fc bfc" id="L147" title="All 2 branches covered.">			int targetIndex = index &lt; allEvents.size() ? index : allEvents.size() - 1;</span>
+<span class="fc" id="L148">			targetSessionId = allEvents.get(targetIndex).getSessionId();</span>
+		}
+
+<span class="fc" id="L151">		Session targetSession = sessions.get(targetSessionId);</span>
+<span class="fc bfc" id="L152" title="All 2 branches covered.">		if (targetSession == null)</span>
+		{
+<span class="fc" id="L154">			targetSession = editable;</span>
+		}
+
+<span class="fc" id="L157">		SplitEvent event = new SplitEvent(targetSession.getId(), mainPlayer, amount, Instant.now());</span>
+<span class="fc" id="L158">		event.setType(SplitEvent.TYPE_LOOT);</span>
+<span class="fc" id="L159">		List&lt;SplitEvent&gt; reorderedEvents = new ArrayList&lt;&gt;(allEvents);</span>
+<span class="fc" id="L160">		reorderedEvents.add(index, event);</span>
+<span class="fc" id="L161">		TimelineValidation validation = validateTimeline(reorderedEvents, getCurrentSession().orElse(editable));</span>
+<span class="fc bfc" id="L162" title="All 2 branches covered.">		if (!validation.valid)</span>
+		{
+<span class="fc" id="L164">			return;</span>
+		}
+<span class="pc bpc" id="L166" title="1 of 2 branches missed.">		if (rebuildCurrentThreadFromEvents(reorderedEvents))</span>
+		{
+<span class="fc" id="L168">			saveAfterMutation();</span>
+		}
+<span class="fc" id="L170">	}</span>
+
+	public boolean removeEventAt(int index)
+	{
+<span class="fc" id="L174">		return removeEventsAt(Collections.singletonList(index));</span>
+	}
+
+	public boolean removeEventsAt(List&lt;Integer&gt; indices)
+	{
+<span class="fc" id="L179">		lastMoveEventFailureMessage = null;</span>
+<span class="fc" id="L180">		List&lt;SplitEvent&gt; allEvents = getAllEvents();</span>
+<span class="pc bpc" id="L181" title="2 of 4 branches missed.">		if (indices == null || indices.isEmpty())</span>
+		{
+<span class="nc" id="L183">			return false;</span>
+		}
+<span class="fc" id="L185">		List&lt;SplitEvent&gt; eventsToRemove = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L186" title="All 2 branches covered.">		for (Integer index : indices)</span>
+		{
+<span class="pc bpc" id="L188" title="3 of 6 branches missed.">			if (index != null &amp;&amp; index &gt;= 0 &amp;&amp; index &lt; allEvents.size())</span>
+			{
+<span class="fc" id="L190">				SplitEvent event = allEvents.get(index);</span>
+<span class="pc bpc" id="L191" title="1 of 2 branches missed.">				if (!eventsToRemove.contains(event))</span>
+				{
+<span class="fc" id="L193">					eventsToRemove.add(event);</span>
+				}
+			}
+<span class="fc" id="L196">		}</span>
+<span class="pc bpc" id="L197" title="1 of 2 branches missed.">		if (eventsToRemove.isEmpty())</span>
+		{
+<span class="nc" id="L199">			return false;</span>
+		}
+<span class="fc" id="L201">		List&lt;SplitEvent&gt; retainedEvents = new ArrayList&lt;&gt;(allEvents);</span>
+<span class="fc" id="L202">		retainedEvents.removeAll(eventsToRemove);</span>
+<span class="fc" id="L203">		TimelineValidation validation = validateTimeline(retainedEvents, getCurrentSession().orElse(null));</span>
+<span class="fc bfc" id="L204" title="All 2 branches covered.">		if (!validation.valid)</span>
+		{
+<span class="fc" id="L206">			lastMoveEventFailureMessage = validation.message;</span>
+<span class="fc" id="L207">			return false;</span>
+		}
+<span class="fc" id="L209">		HistoryEditSnapshot undoSnapshot = captureHistoryEditSnapshot();</span>
+<span class="fc bfc" id="L210" title="All 2 branches covered.">		if (!prepareHistoryMutation())</span>
+		{
+<span class="fc" id="L212">			lastMoveEventFailureMessage = &quot;History edit was cancelled.&quot;;</span>
+<span class="fc" id="L213">			return false;</span>
+		}
+<span class="fc bfc" id="L215" title="All 2 branches covered.">		if (rebuildCurrentThreadFromEvents(retainedEvents))</span>
+		{
+<span class="fc" id="L217">			pushHistoryEditUndoSnapshot(undoSnapshot);</span>
+<span class="fc" id="L218">			saveAfterHistoryTableMutation();</span>
+<span class="fc" id="L219">			return true;</span>
+		}
+<span class="fc" id="L221">		lastMoveEventFailureMessage = &quot;Cannot remove that history row.&quot;;</span>
+<span class="fc" id="L222">		return false;</span>
+	}
+
+	public boolean moveEvent(int fromIndex, int toIndex)
+	{
+<span class="fc" id="L227">		lastMoveEventFailureMessage = null;</span>
+<span class="fc" id="L228">		List&lt;SplitEvent&gt; allEvents = getAllEvents();</span>
+<span class="pc bpc" id="L229" title="3 of 8 branches missed.">		if (fromIndex &lt; 0 || fromIndex &gt;= allEvents.size() || toIndex &lt; 0 || toIndex &gt; allEvents.size())</span>
+		{
+<span class="fc" id="L231">			return rejectMove(&quot;Cannot move that history row.&quot;);</span>
+		}
+<span class="pc bpc" id="L233" title="1 of 4 branches missed.">		if (toIndex == fromIndex || toIndex == fromIndex + 1)</span>
+		{
+<span class="fc" id="L235">			return false;</span>
+		}
+
+<span class="fc" id="L238">		SplitEvent event = allEvents.get(fromIndex);</span>
+<span class="fc" id="L239">		List&lt;SplitEvent&gt; remainingEvents = new ArrayList&lt;&gt;(allEvents);</span>
+<span class="fc" id="L240">		remainingEvents.remove(fromIndex);</span>
+
+<span class="fc" id="L242">		int insertionIndex = toIndex;</span>
+<span class="fc bfc" id="L243" title="All 2 branches covered.">		if (fromIndex &lt; insertionIndex)</span>
+		{
+<span class="fc" id="L245">			insertionIndex--;</span>
+		}
+<span class="fc" id="L247">		insertionIndex = Math.min(insertionIndex, remainingEvents.size());</span>
+<span class="fc" id="L248">		List&lt;SplitEvent&gt; reorderedEvents = new ArrayList&lt;&gt;(remainingEvents);</span>
+<span class="fc" id="L249">		reorderedEvents.add(insertionIndex, event);</span>
+<span class="fc" id="L250">		TimelineValidation validation = validateTimeline(reorderedEvents, getCurrentSession().orElse(null));</span>
+<span class="fc bfc" id="L251" title="All 2 branches covered.">		if (!validation.valid)</span>
+		{
+<span class="fc" id="L253">			return rejectMove(validation.message);</span>
+		}
+<span class="fc" id="L255">		HistoryEditSnapshot undoSnapshot = captureHistoryEditSnapshot();</span>
+<span class="fc bfc" id="L256" title="All 2 branches covered.">		if (!prepareHistoryMutation())</span>
+		{
+<span class="fc" id="L258">			return rejectMove(&quot;History edit was cancelled.&quot;);</span>
+		}
+
+<span class="fc bfc" id="L261" title="All 2 branches covered.">		if (!rebuildCurrentThreadFromEvents(reorderedEvents))</span>
+		{
+<span class="fc" id="L263">			return rejectMove(&quot;Cannot move that history row.&quot;);</span>
+		}
+<span class="fc" id="L265">		pushHistoryEditUndoSnapshot(undoSnapshot);</span>
+<span class="fc" id="L266">		saveAfterHistoryTableMutation();</span>
+<span class="fc" id="L267">		return true;</span>
+	}
+
+	public boolean updateHistoryLootEventAt(int index, String player, Long amount)
+	{
+<span class="fc" id="L272">		lastMoveEventFailureMessage = null;</span>
+<span class="fc" id="L273">		List&lt;SplitEvent&gt; allEvents = getAllEvents();</span>
+<span class="pc bpc" id="L274" title="1 of 4 branches missed.">		if (index &lt; 0 || index &gt;= allEvents.size())</span>
+		{
+<span class="fc" id="L276">			return rejectMove(&quot;Cannot edit that history row.&quot;);</span>
+		}
+
+<span class="fc" id="L279">		SplitEvent original = allEvents.get(index);</span>
+<span class="pc bpc" id="L280" title="1 of 4 branches missed.">		if (original == null || !original.isLootEvent())</span>
+		{
+<span class="fc" id="L282">			return rejectMove(&quot;Only loot rows can be edited.&quot;);</span>
+		}
+
+<span class="fc" id="L285">		String resolvedPlayer = player;</span>
+<span class="fc bfc" id="L286" title="All 2 branches covered.">		if (resolvedPlayer != null)</span>
+		{
+<span class="fc" id="L288">			resolvedPlayer = resolveMainName(resolvedPlayer);</span>
+<span class="pc bpc" id="L289" title="1 of 4 branches missed.">			if (resolvedPlayer == null || resolvedPlayer.isBlank())</span>
+			{
+<span class="fc" id="L291">				return rejectMove(&quot;Player cannot be blank.&quot;);</span>
+			}
+<span class="fc" id="L293">			resolvedPlayer = resolvedPlayer.trim();</span>
+		}
+
+<span class="fc" id="L296">		Long resolvedAmount = amount;</span>
+<span class="fc bfc" id="L297" title="All 4 branches covered.">		if (resolvedAmount != null &amp;&amp; resolvedAmount &lt; 0L)</span>
+		{
+<span class="fc" id="L299">			return rejectMove(&quot;Loot cannot be negative.&quot;);</span>
+		}
+
+<span class="fc bfc" id="L302" title="All 6 branches covered.">		if ((resolvedPlayer == null || sameNullableString(resolvedPlayer, original.getPlayer()))</span>
+<span class="pc bpc" id="L303" title="1 of 2 branches missed.">			&amp;&amp; (resolvedAmount == null || resolvedAmount.equals(original.getAmount())))</span>
+		{
+<span class="fc" id="L305">			return false;</span>
+		}
+
+<span class="fc" id="L308">		List&lt;SplitEvent&gt; candidateEvents = copyEventsPreservingSessionIds(allEvents);</span>
+<span class="fc" id="L309">		SplitEvent candidate = candidateEvents.get(index);</span>
+<span class="fc bfc" id="L310" title="All 2 branches covered.">		if (resolvedPlayer != null)</span>
+		{
+<span class="fc" id="L312">			candidate.setPlayer(resolvedPlayer);</span>
+		}
+<span class="fc bfc" id="L314" title="All 2 branches covered.">		if (resolvedAmount != null)</span>
+		{
+<span class="fc" id="L316">			candidate.setAmount(resolvedAmount);</span>
+		}
+
+<span class="fc" id="L319">		TimelineValidation validation = validateTimeline(candidateEvents, getCurrentSession().orElse(null));</span>
+<span class="fc bfc" id="L320" title="All 2 branches covered.">		if (!validation.valid)</span>
+		{
+<span class="fc" id="L322">			return rejectMove(validation.message);</span>
+		}
+<span class="fc" id="L324">		HistoryEditSnapshot undoSnapshot = captureHistoryEditSnapshot();</span>
+<span class="fc bfc" id="L325" title="All 2 branches covered.">		if (!prepareHistoryMutation())</span>
+		{
+<span class="fc" id="L327">			return rejectMove(&quot;History edit was cancelled.&quot;);</span>
+		}
+
+<span class="fc bfc" id="L330" title="All 2 branches covered.">		if (resolvedPlayer != null)</span>
+		{
+<span class="fc" id="L332">			original.setPlayer(resolvedPlayer);</span>
+		}
+<span class="fc bfc" id="L334" title="All 2 branches covered.">		if (resolvedAmount != null)</span>
+		{
+<span class="fc" id="L336">			original.setAmount(resolvedAmount);</span>
+		}
+<span class="fc" id="L338">		pushHistoryEditUndoSnapshot(undoSnapshot);</span>
+<span class="fc" id="L339">		markHistoryTableMutation();</span>
+<span class="fc" id="L340">		return true;</span>
+	}
+
+	public String getLastMoveEventFailureMessage()
+	{
+<span class="fc" id="L345">		return lastMoveEventFailureMessage;</span>
+	}
+
+	private boolean rejectMove(String message)
+	{
+<span class="fc" id="L350">		lastMoveEventFailureMessage = message;</span>
+<span class="fc" id="L351">		return false;</span>
+	}
+
+	private void applyRosterEvent(Set&lt;String&gt; roster, SplitEvent event)
+	{
+<span class="pc bpc" id="L356" title="2 of 4 branches missed.">		if (event == null || event.getPlayer() == null)</span>
+		{
+<span class="nc" id="L358">			return;</span>
+		}
+<span class="fc bfc" id="L360" title="All 2 branches covered.">		if (SplitEvent.TYPE_JOINED.equalsIgnoreCase(event.getType()))</span>
+		{
+<span class="fc" id="L362">			addPlayerName(roster, event.getPlayer());</span>
+		}
+<span class="pc bpc" id="L364" title="1 of 2 branches missed.">		else if (SplitEvent.TYPE_LEFT.equalsIgnoreCase(event.getType()))</span>
+		{
+<span class="fc" id="L366">			removePlayerName(roster, event.getPlayer());</span>
+		}
+<span class="fc" id="L368">	}</span>
+
+	private void addPlayerName(Set&lt;String&gt; roster, String player)
+	{
+<span class="fc bfc" id="L372" title="All 2 branches covered.">		for (String existing : roster)</span>
+		{
+<span class="pc bpc" id="L374" title="1 of 2 branches missed.">			if (existing.equalsIgnoreCase(player))</span>
+			{
+<span class="nc" id="L376">				return;</span>
+			}
+<span class="fc" id="L378">		}</span>
+<span class="fc" id="L379">		roster.add(player);</span>
+<span class="fc" id="L380">	}</span>
+
+	private void removePlayerName(Set&lt;String&gt; roster, String player)
+	{
+<span class="fc" id="L384">		roster.removeIf(existing -&gt; existing.equalsIgnoreCase(player));</span>
+<span class="fc" id="L385">	}</span>
+
+	private SplitEvent copyEventForSession(SplitEvent event, String sessionId)
+	{
+<span class="fc" id="L389">		SplitEvent copy = new SplitEvent(sessionId, event.getPlayer(), event.getAmount(), event.getAt());</span>
+<span class="fc" id="L390">		copy.setType(event.getType());</span>
+<span class="fc" id="L391">		return copy;</span>
+	}
+
+	private List&lt;SplitEvent&gt; copyEventsPreservingSessionIds(List&lt;SplitEvent&gt; events)
+	{
+<span class="fc" id="L396">		List&lt;SplitEvent&gt; copies = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L397" title="All 2 branches covered.">		for (SplitEvent event : events)</span>
+		{
+<span class="pc bpc" id="L399" title="1 of 2 branches missed.">			if (event != null)</span>
+			{
+<span class="fc" id="L401">				copies.add(copyEventForSession(event, event.getSessionId()));</span>
+			}
+<span class="fc" id="L403">		}</span>
+<span class="fc" id="L404">		return copies;</span>
+	}
+
+	private boolean sameNullableString(String first, String second)
+	{
+<span class="pc bpc" id="L409" title="1 of 2 branches missed.">		if (first == null)</span>
+		{
+<span class="nc bnc" id="L411" title="All 2 branches missed.">			return second == null;</span>
+		}
+<span class="fc" id="L413">		return first.equals(second);</span>
+	}
+
+	public boolean canUndoHistoryEdit()
+	{
+<span class="fc bfc" id="L418" title="All 2 branches covered.">		return !historyEditUndoStack.isEmpty();</span>
+	}
+
+	public boolean canRedoHistoryEdit()
+	{
+<span class="fc bfc" id="L423" title="All 2 branches covered.">		return !historyEditRedoStack.isEmpty();</span>
+	}
+
+	public boolean undoHistoryEdit()
+	{
+<span class="fc bfc" id="L428" title="All 2 branches covered.">		if (!canUndoHistoryEdit())</span>
+		{
+<span class="fc" id="L430">			return false;</span>
+		}
+
+<span class="fc" id="L433">		HistoryEditSnapshot current = captureHistoryEditSnapshot();</span>
+<span class="fc" id="L434">		HistoryEditSnapshot previous = historyEditUndoStack.remove(historyEditUndoStack.size() - 1);</span>
+<span class="fc" id="L435">		historyEditRedoStack.add(current);</span>
+<span class="fc" id="L436">		restoreHistoryEditSnapshot(previous);</span>
+<span class="fc" id="L437">		return true;</span>
+	}
+
+	public boolean redoHistoryEdit()
+	{
+<span class="fc bfc" id="L442" title="All 2 branches covered.">		if (!canRedoHistoryEdit())</span>
+		{
+<span class="fc" id="L444">			return false;</span>
+		}
+
+<span class="fc" id="L447">		HistoryEditSnapshot current = captureHistoryEditSnapshot();</span>
+<span class="fc" id="L448">		HistoryEditSnapshot next = historyEditRedoStack.remove(historyEditRedoStack.size() - 1);</span>
+<span class="fc" id="L449">		pushHistoryEditUndoSnapshot(current, false);</span>
+<span class="fc" id="L450">		restoreHistoryEditSnapshot(next);</span>
+<span class="fc" id="L451">		return true;</span>
+	}
+
+	public void clearHistoryEditUndo()
+	{
+<span class="fc" id="L456">		historyEditUndoStack.clear();</span>
+<span class="fc" id="L457">		historyEditRedoStack.clear();</span>
+<span class="fc" id="L458">	}</span>
+
+	private HistoryEditSnapshot captureHistoryEditSnapshot()
+	{
+<span class="fc" id="L462">		return new HistoryEditSnapshot(copySessions(sessions), currentSessionId, historyLoaded, historyDirty);</span>
+	}
+
+	private void pushHistoryEditUndoSnapshot(HistoryEditSnapshot snapshot)
+	{
+<span class="fc" id="L467">		pushHistoryEditUndoSnapshot(snapshot, true);</span>
+<span class="fc" id="L468">	}</span>
+
+	private void pushHistoryEditUndoSnapshot(HistoryEditSnapshot snapshot, boolean clearRedo)
+	{
+<span class="pc bpc" id="L472" title="1 of 2 branches missed.">		if (snapshot == null)</span>
+		{
+<span class="nc" id="L474">			return;</span>
+		}
+<span class="fc" id="L476">		historyEditUndoStack.add(snapshot);</span>
+<span class="fc bfc" id="L477" title="All 2 branches covered.">		while (historyEditUndoStack.size() &gt; MAX_HISTORY_EDIT_UNDO_STEPS)</span>
+		{
+<span class="fc" id="L479">			historyEditUndoStack.remove(0);</span>
+		}
+<span class="fc bfc" id="L481" title="All 2 branches covered.">		if (clearRedo)</span>
+		{
+<span class="fc" id="L483">			historyEditRedoStack.clear();</span>
+		}
+<span class="fc" id="L485">	}</span>
+
+	private void restoreHistoryEditSnapshot(HistoryEditSnapshot snapshot)
+	{
+<span class="pc bpc" id="L489" title="1 of 2 branches missed.">		if (snapshot == null)</span>
+		{
+<span class="nc" id="L491">			return;</span>
+		}
+<span class="fc" id="L493">		sessions.clear();</span>
+<span class="fc" id="L494">		sessions.putAll(copySessions(snapshot.sessions));</span>
+<span class="fc" id="L495">		currentSessionId = snapshot.currentSessionId;</span>
+<span class="fc" id="L496">		historyLoaded = snapshot.historyLoaded;</span>
+<span class="fc" id="L497">		historyDirty = snapshot.historyDirty;</span>
+<span class="fc" id="L498">		motherEventsCache.clear();</span>
+<span class="fc bfc" id="L499" title="All 2 branches covered.">		if (!historyLoaded)</span>
+		{
+<span class="fc" id="L501">			saveToConfig();</span>
+		}
+<span class="fc" id="L503">	}</span>
+
+	private LinkedHashMap&lt;String, Session&gt; copySessions(Map&lt;String, Session&gt; source)
+	{
+<span class="fc" id="L507">		LinkedHashMap&lt;String, Session&gt; copies = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L508" title="All 2 branches covered.">		for (Map.Entry&lt;String, Session&gt; entry : source.entrySet())</span>
+		{
+<span class="fc" id="L510">			Session session = entry.getValue();</span>
+<span class="pc bpc" id="L511" title="1 of 2 branches missed.">			if (session != null)</span>
+			{
+<span class="fc" id="L513">				copies.put(entry.getKey(), copySessionSnapshot(session));</span>
+			}
+<span class="fc" id="L515">		}</span>
+<span class="fc" id="L516">		return copies;</span>
+	}
+
+	private Session copySessionSnapshot(Session source)
+	{
+<span class="fc" id="L521">		Session copy = new Session(source.getId(), source.getStart(), source.getMotherId());</span>
+<span class="fc" id="L522">		copy.setEnd(source.getEnd());</span>
+<span class="fc" id="L523">		copy.setPluginVersion(source.getPluginVersion());</span>
+<span class="fc" id="L524">		copy.setSettlementConfigAtStart(copySettlementConfigSnapshot(source.getSettlementConfigAtStart()));</span>
+<span class="fc" id="L525">		copy.setSettlementConfigAtEnd(copySettlementConfigSnapshot(source.getSettlementConfigAtEnd()));</span>
+<span class="fc" id="L526">		copy.setAltMappingAtStart(copyStringMap(source.getAltMappingAtStart()));</span>
+<span class="fc" id="L527">		copy.setAltMappingAtEnd(copyStringMap(source.getAltMappingAtEnd()));</span>
+<span class="fc" id="L528">		copy.getPlayers().addAll(source.getPlayers());</span>
+<span class="fc bfc" id="L529" title="All 2 branches covered.">		for (SplitEvent event : source.getEvents())</span>
+		{
+<span class="pc bpc" id="L531" title="1 of 2 branches missed.">			if (event != null)</span>
+			{
+<span class="fc" id="L533">				copy.getEvents().add(copyEventForSession(event, source.getId()));</span>
+			}
+<span class="fc" id="L535">		}</span>
+<span class="fc" id="L536">		return copy;</span>
+	}
+
+	private SettlementConfigSnapshot copySettlementConfigSnapshot(SettlementConfigSnapshot source)
+	{
+<span class="fc bfc" id="L541" title="All 2 branches covered.">		if (source == null)</span>
+		{
+<span class="fc" id="L543">			return null;</span>
+		}
+<span class="fc" id="L545">		return new SettlementConfigSnapshot(</span>
+<span class="fc" id="L546">			source.isAccountForGeTax(),</span>
+<span class="fc" id="L547">			source.getGeTaxMinimumValue(),</span>
+<span class="fc" id="L548">			source.getGeTaxPercent(),</span>
+<span class="fc" id="L549">			source.getGeTaxMaxPerLoot());</span>
+	}
+
+	private Map&lt;String, String&gt; copyStringMap(Map&lt;String, String&gt; source)
+	{
+<span class="fc bfc" id="L554" title="All 2 branches covered.">		return source == null ? null : new LinkedHashMap&lt;&gt;(source);</span>
+	}
+
+	private boolean rebuildCurrentThreadFromEvents(List&lt;SplitEvent&gt; orderedEvents)
+	{
+<span class="fc" id="L559">		Session current = getCurrentSession().orElse(null);</span>
+<span class="pc bpc" id="L560" title="1 of 2 branches missed.">		if (current == null)</span>
+		{
+<span class="nc" id="L562">			return false;</span>
+		}
+<span class="fc" id="L564">		String rootId = getRootSessionId(current);</span>
+<span class="fc" id="L565">		Session mother = sessions.get(rootId);</span>
+<span class="fc bfc" id="L566" title="All 2 branches covered.">		if (mother == null)</span>
+		{
+<span class="fc" id="L568">			return false;</span>
+		}
+<span class="fc" id="L570">		List&lt;Session&gt; oldChildren = getChildSessionsForRoot(rootId);</span>
+<span class="fc" id="L571">		List&lt;Session&gt; rebuiltChildren = rebuildChildrenForThread(mother, oldChildren, orderedEvents);</span>
+<span class="pc bpc" id="L572" title="3 of 4 branches missed.">		if (rebuiltChildren.isEmpty() &amp;&amp; !oldChildren.isEmpty())</span>
+		{
+<span class="nc" id="L574">			return false;</span>
+		}
+
+<span class="fc bfc" id="L577" title="All 2 branches covered.">		for (Session child : oldChildren)</span>
+		{
+<span class="fc" id="L579">			sessions.remove(child.getId());</span>
+<span class="fc" id="L580">		}</span>
+<span class="fc bfc" id="L581" title="All 2 branches covered.">		for (Session child : rebuiltChildren)</span>
+		{
+<span class="fc" id="L583">			sessions.put(child.getId(), child);</span>
+<span class="fc" id="L584">		}</span>
+
+<span class="pc bpc" id="L586" title="1 of 4 branches missed.">		if (!historyLoaded &amp;&amp; !rebuiltChildren.isEmpty())</span>
+		{
+<span class="fc" id="L588">			currentSessionId = rebuiltChildren.get(rebuiltChildren.size() - 1).getId();</span>
+		}
+<span class="pc bpc" id="L590" title="3 of 6 branches missed.">		else if (historyLoaded &amp;&amp; currentSessionId != null &amp;&amp; !sessions.containsKey(currentSessionId))</span>
+		{
+<span class="nc" id="L592">			currentSessionId = rootId;</span>
+		}
+<span class="fc" id="L594">		motherEventsCache.remove(rootId);</span>
+<span class="fc" id="L595">		return true;</span>
+	}
+
+	private List&lt;Session&gt; rebuildChildrenForThread(Session mother, List&lt;Session&gt; oldChildren, List&lt;SplitEvent&gt; orderedEvents)
+	{
+<span class="fc" id="L600">		List&lt;Session&gt; rebuilt = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L601">		LinkedHashSet&lt;String&gt; roster = initialRosterForTimeline(oldChildren, orderedEvents);</span>
+<span class="fc" id="L602">		List&lt;SplitEvent&gt; segmentEvents = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L603">		List&lt;LinkedHashSet&lt;String&gt;&gt; segmentRosters = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L604">		List&lt;List&lt;SplitEvent&gt;&gt; segmentEventGroups = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L605">		List&lt;Instant&gt; segmentStarts = new ArrayList&lt;&gt;();</span>
+<span class="pc bpc" id="L606" title="1 of 2 branches missed.">		Instant currentStart = oldChildren.isEmpty() ? mother.getStart() : oldChildren.get(0).getStart();</span>
+
+<span class="fc bfc" id="L608" title="All 2 branches covered.">		for (SplitEvent event : orderedEvents)</span>
+		{
+<span class="pc bpc" id="L610" title="1 of 2 branches missed.">			if (event == null)</span>
+			{
+<span class="nc" id="L612">				continue;</span>
+			}
+<span class="fc bfc" id="L614" title="All 2 branches covered.">			if (event.isRosterEvent())</span>
+			{
+<span class="fc bfc" id="L616" title="All 2 branches covered.">				if (hasLootEvent(segmentEvents))</span>
+				{
+<span class="fc" id="L618">					segmentRosters.add(new LinkedHashSet&lt;&gt;(roster));</span>
+<span class="fc" id="L619">					segmentEventGroups.add(new ArrayList&lt;&gt;(segmentEvents));</span>
+<span class="fc" id="L620">					segmentStarts.add(currentStart);</span>
+<span class="fc" id="L621">					segmentEvents.clear();</span>
+<span class="pc bpc" id="L622" title="1 of 2 branches missed.">					currentStart = event.getAt() == null ? Instant.now() : event.getAt();</span>
+				}
+<span class="fc" id="L624">				applyRosterEvent(roster, event);</span>
+<span class="fc" id="L625">				segmentEvents.add(event);</span>
+<span class="fc" id="L626">				continue;</span>
+			}
+
+<span class="pc bpc" id="L629" title="3 of 6 branches missed.">			if (event.isLootEvent() &amp;&amp; event.getPlayer() != null &amp;&amp; !containsPlayer(roster, event.getPlayer()))</span>
+			{
+<span class="nc" id="L631">				addPlayerName(roster, event.getPlayer());</span>
+			}
+<span class="fc" id="L633">			segmentEvents.add(event);</span>
+<span class="fc" id="L634">		}</span>
+
+<span class="pc bpc" id="L636" title="3 of 4 branches missed.">		if (!segmentEvents.isEmpty() || !roster.isEmpty())</span>
+		{
+<span class="fc" id="L638">			segmentRosters.add(new LinkedHashSet&lt;&gt;(roster));</span>
+<span class="fc" id="L639">			segmentEventGroups.add(new ArrayList&lt;&gt;(segmentEvents));</span>
+<span class="fc" id="L640">			segmentStarts.add(currentStart);</span>
+		}
+
+<span class="pc bpc" id="L643" title="1 of 2 branches missed.">		if (segmentEventGroups.isEmpty())</span>
+		{
+<span class="nc" id="L645">			Session empty = new Session(childIdAt(oldChildren, 0), mother.getStart(), mother.getId());</span>
+<span class="nc" id="L646">			empty.getPlayers().addAll(roster);</span>
+<span class="nc bnc" id="L647" title="All 2 branches missed.">			empty.setEnd(mother.isActive() ? null : mother.getEnd());</span>
+<span class="nc" id="L648">			rebuilt.add(empty);</span>
+<span class="nc" id="L649">			return rebuilt;</span>
+		}
+
+<span class="fc bfc" id="L652" title="All 2 branches covered.">		for (int i = 0; i &lt; segmentEventGroups.size(); i++)</span>
+		{
+<span class="fc" id="L654">			String childId = childIdAt(oldChildren, i);</span>
+<span class="fc" id="L655">			Session child = new Session(childId, segmentStarts.get(i), mother.getId());</span>
+<span class="fc" id="L656">			child.setPluginVersion(Session.CURRENT_PLUGIN_VERSION);</span>
+<span class="fc" id="L657">			child.getPlayers().addAll(segmentRosters.get(i));</span>
+<span class="fc bfc" id="L658" title="All 2 branches covered.">			for (SplitEvent event : segmentEventGroups.get(i))</span>
+			{
+<span class="fc" id="L660">				child.getEvents().add(copyEventForSession(event, childId));</span>
+<span class="fc" id="L661">			}</span>
+<span class="fc bfc" id="L662" title="All 2 branches covered.">			if (i + 1 &lt; segmentStarts.size())</span>
+			{
+<span class="fc" id="L664">				child.setEnd(segmentStarts.get(i + 1));</span>
+			}
+<span class="fc bfc" id="L666" title="All 2 branches covered.">			else if (!mother.isActive())</span>
+			{
+<span class="fc" id="L668">				child.setEnd(mother.getEnd());</span>
+			}
+<span class="fc" id="L670">			rebuilt.add(child);</span>
+		}
+<span class="fc" id="L672">		return rebuilt;</span>
+	}
+
+	private String childIdAt(List&lt;Session&gt; oldChildren, int index)
+	{
+<span class="pc bpc" id="L677" title="1 of 4 branches missed.">		if (index &gt;= 0 &amp;&amp; index &lt; oldChildren.size())</span>
+		{
+<span class="fc" id="L679">			return oldChildren.get(index).getId();</span>
+		}
+<span class="fc" id="L681">		return newId();</span>
+	}
+
+	private boolean hasLootEvent(List&lt;SplitEvent&gt; events)
+	{
+<span class="fc bfc" id="L686" title="All 2 branches covered.">		for (SplitEvent event : events)</span>
+		{
+<span class="pc bpc" id="L688" title="1 of 4 branches missed.">			if (event != null &amp;&amp; event.isLootEvent())</span>
+			{
+<span class="fc" id="L690">				return true;</span>
+			}
+<span class="fc" id="L692">		}</span>
+<span class="fc" id="L693">		return false;</span>
+	}
+
+	private LinkedHashSet&lt;String&gt; initialRosterForTimeline(List&lt;Session&gt; oldChildren, List&lt;SplitEvent&gt; orderedEvents)
+	{
+<span class="fc" id="L698">		LinkedHashSet&lt;String&gt; roster = new LinkedHashSet&lt;&gt;();</span>
+<span class="pc bpc" id="L699" title="1 of 2 branches missed.">		if (oldChildren.isEmpty())</span>
+		{
+<span class="nc" id="L701">			return roster;</span>
+		}
+<span class="fc" id="L703">		Set&lt;String&gt; playersWithJoin = orderedEvents.stream()</span>
+<span class="pc bpc" id="L704" title="2 of 6 branches missed.">			.filter(event -&gt; event != null &amp;&amp; SplitEvent.TYPE_JOINED.equalsIgnoreCase(event.getType()) &amp;&amp; event.getPlayer() != null)</span>
+<span class="fc" id="L705">			.map(event -&gt; event.getPlayer().toLowerCase(Locale.ENGLISH))</span>
+<span class="fc" id="L706">			.collect(Collectors.toSet());</span>
+<span class="fc bfc" id="L707" title="All 2 branches covered.">		for (String player : oldChildren.get(0).getPlayers())</span>
+		{
+<span class="pc bpc" id="L709" title="1 of 4 branches missed.">			if (player != null &amp;&amp; !playersWithJoin.contains(player.toLowerCase(Locale.ENGLISH)))</span>
+			{
+<span class="fc" id="L711">				addPlayerName(roster, player);</span>
+			}
+<span class="fc" id="L713">		}</span>
+<span class="fc" id="L714">		return roster;</span>
+	}
+
+	private List&lt;Session&gt; getChildSessionsForRoot(String rootId)
+	{
+<span class="fc" id="L719">		List&lt;Session&gt; children = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L720" title="All 2 branches covered.">		for (Session session : sessions.values())</span>
+		{
+<span class="pc bpc" id="L722" title="1 of 4 branches missed.">			if (session != null &amp;&amp; rootId.equals(session.getMotherId()))</span>
+			{
+<span class="fc" id="L724">				children.add(session);</span>
+			}
+<span class="fc" id="L726">		}</span>
+<span class="fc" id="L727">		return children;</span>
+	}
+
+	private TimelineValidation validateTimeline(List&lt;SplitEvent&gt; orderedEvents, Session selected)
+	{
+<span class="pc bpc" id="L732" title="1 of 2 branches missed.">		if (selected == null)</span>
+		{
+<span class="nc" id="L734">			return TimelineValidation.valid();</span>
+		}
+<span class="fc" id="L736">		LinkedHashSet&lt;String&gt; activePlayers = lowerCaseRoster(initialRosterForTimeline(</span>
+<span class="fc" id="L737">			getChildSessionsForRoot(getRootSessionId(selected)),</span>
+			orderedEvents));
+<span class="fc bfc" id="L739" title="All 2 branches covered.">		for (SplitEvent event : orderedEvents)</span>
+		{
+<span class="pc bpc" id="L741" title="2 of 4 branches missed.">			if (event == null || event.getPlayer() == null)</span>
+			{
+<span class="nc" id="L743">				continue;</span>
+			}
+<span class="fc" id="L745">			String player = event.getPlayer().toLowerCase(Locale.ENGLISH);</span>
+<span class="fc bfc" id="L746" title="All 2 branches covered.">			if (SplitEvent.TYPE_JOINED.equalsIgnoreCase(event.getType()))</span>
+			{
+<span class="fc bfc" id="L748" title="All 2 branches covered.">				if (activePlayers.contains(player))</span>
+				{
+<span class="fc" id="L750">					return TimelineValidation.invalid(&quot;Cannot move a join event into a period where that player is already active.&quot;);</span>
+				}
+<span class="fc" id="L752">				activePlayers.add(player);</span>
+			}
+<span class="fc bfc" id="L754" title="All 2 branches covered.">			else if (SplitEvent.TYPE_LEFT.equalsIgnoreCase(event.getType()))</span>
+			{
+<span class="fc bfc" id="L756" title="All 2 branches covered.">				if (!activePlayers.contains(player))</span>
+				{
+<span class="fc" id="L758">					return TimelineValidation.invalid(&quot;Cannot move a left event before that player joined.&quot;);</span>
+				}
+<span class="fc" id="L760">				activePlayers.remove(player);</span>
+			}
+<span class="pc bpc" id="L762" title="1 of 4 branches missed.">			else if (event.isLootEvent() &amp;&amp; !activePlayers.contains(player))</span>
+			{
+<span class="fc" id="L764">				return TimelineValidation.invalid(&quot;Cannot move loot outside that player's time in the session.&quot;);</span>
+			}
+<span class="fc" id="L766">		}</span>
+<span class="fc" id="L767">		return TimelineValidation.valid();</span>
+	}
+
+	private LinkedHashSet&lt;String&gt; lowerCaseRoster(Set&lt;String&gt; roster)
+	{
+<span class="fc" id="L772">		LinkedHashSet&lt;String&gt; lower = new LinkedHashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L773" title="All 2 branches covered.">		for (String player : roster)</span>
+		{
+<span class="pc bpc" id="L775" title="1 of 2 branches missed.">			if (player != null)</span>
+			{
+<span class="fc" id="L777">				lower.add(player.toLowerCase(Locale.ENGLISH));</span>
+			}
+<span class="fc" id="L779">		}</span>
+<span class="fc" id="L780">		return lower;</span>
+	}
+
+	private boolean containsPlayer(Set&lt;String&gt; roster, String player)
+	{
+<span class="pc bpc" id="L785" title="1 of 2 branches missed.">		for (String existing : roster)</span>
+		{
+<span class="pc bpc" id="L787" title="1 of 4 branches missed.">			if (existing != null &amp;&amp; existing.equalsIgnoreCase(player))</span>
+			{
+<span class="fc" id="L789">				return true;</span>
+			}
+<span class="fc" id="L791">		}</span>
+<span class="nc" id="L792">		return false;</span>
+	}
+
+	private static final class TimelineValidation
+	{
+		private final boolean valid;
+		private final String message;
+
+		private TimelineValidation(boolean valid, String message)
+<span class="fc" id="L801">		{</span>
+<span class="fc" id="L802">			this.valid = valid;</span>
+<span class="fc" id="L803">			this.message = message;</span>
+<span class="fc" id="L804">		}</span>
+
+		private static TimelineValidation valid()
+		{
+<span class="fc" id="L808">			return new TimelineValidation(true, null);</span>
+		}
+
+		private static TimelineValidation invalid(String message)
+		{
+<span class="fc" id="L813">			return new TimelineValidation(false, message);</span>
+		}
+	}
+
+	private String resolveMainName(String player)
+	{
+<span class="fc bfc" id="L819" title="All 2 branches covered.">		if (player == null)</span>
+		{
+<span class="fc" id="L821">			return null;</span>
+		}
+<span class="fc" id="L823">		String trimmed = player.trim();</span>
+<span class="fc bfc" id="L824" title="All 2 branches covered.">		if (trimmed.isEmpty())</span>
+		{
+<span class="fc" id="L826">			return null;</span>
+		}
+<span class="fc bfc" id="L828" title="All 2 branches covered.">		if (historyLoaded)</span>
+		{
+<span class="fc" id="L830">			return resolveHistoricalMainName(trimmed);</span>
+		}
+<span class="fc" id="L832">		return playerManager.getMainName(trimmed);</span>
+	}
+
+	private String resolveHistoricalMainName(String player)
+	{
+<span class="fc" id="L837">		Map&lt;String, String&gt; altSnapshot = getCurrentThreadAltMappingSnapshot();</span>
+<span class="fc bfc" id="L838" title="All 2 branches covered.">		if (altSnapshot == null)</span>
+		{
+<span class="fc" id="L840">			return player;</span>
+		}
+<span class="fc" id="L842">		return resolveNameWithMapping(player, altSnapshot);</span>
+	}
+
+	private String resolveNameWithMapping(String player, Map&lt;String, String&gt; altMapping)
+	{
+<span class="fc" id="L847">		String resolved = player;</span>
+<span class="fc" id="L848">		String visited = null;</span>
+<span class="pc bpc" id="L849" title="1 of 2 branches missed.">		for (int i = 0; i &lt; 5; i++)</span>
+		{
+<span class="fc" id="L851">			String mapped = getMappedMain(resolved, altMapping);</span>
+<span class="pc bpc" id="L852" title="1 of 4 branches missed.">			if (mapped == null || mapped.equalsIgnoreCase(resolved))</span>
+			{
+<span class="fc" id="L854">				return resolved;</span>
+			}
+<span class="pc bpc" id="L856" title="3 of 4 branches missed.">			if (visited != null &amp;&amp; visited.equalsIgnoreCase(mapped))</span>
+			{
+<span class="nc" id="L858">				break;</span>
+			}
+<span class="fc" id="L860">			visited = resolved;</span>
+<span class="fc" id="L861">			resolved = mapped;</span>
+		}
+<span class="nc" id="L863">		return resolved;</span>
+	}
+
+	private String getMappedMain(String alt, Map&lt;String, String&gt; altMapping)
+	{
+<span class="pc bpc" id="L868" title="2 of 4 branches missed.">		if (alt == null || altMapping == null)</span>
+		{
+<span class="nc" id="L870">			return null;</span>
+		}
+<span class="fc bfc" id="L872" title="All 2 branches covered.">		for (Map.Entry&lt;String, String&gt; entry : altMapping.entrySet())</span>
+		{
+<span class="pc bpc" id="L874" title="1 of 4 branches missed.">			if (entry.getKey() != null &amp;&amp; entry.getKey().equalsIgnoreCase(alt))</span>
+			{
+<span class="fc" id="L876">				return entry.getValue();</span>
+			}
+<span class="fc" id="L878">		}</span>
+<span class="fc" id="L879">		return null;</span>
+	}
+
+	/**
+	 * Loads persisted session data into the application's runtime structures.
+	 * &lt;p&gt;
+	 * This method performs the following operations:
+	 * &lt;p&gt;
+	 * 1. Clears the session map and populates it with sessions retrieved from a
+	 * versioned JSON document. Each session is parsed and added to
+	 * the map by its ID.
+	 * &lt;p&gt;
+	 * 2. Updates the current session ID and clears it when the persisted id
+	 * does not point to a loaded session.
+	 */
+	public void loadFromConfig()
+	{
+<span class="fc" id="L896">		clearHistoryEditUndo();</span>
+<span class="fc" id="L897">		SessionStorageData data = loadPersistedData();</span>
+<span class="fc bfc" id="L898" title="All 2 branches covered.">		boolean schemaUpgrade = !sessionStorage.isLegacyConfigStore()</span>
+<span class="fc bfc" id="L899" title="All 2 branches covered.">			&amp;&amp; sessionStorage.exists()</span>
+<span class="fc bfc" id="L900" title="All 2 branches covered.">			&amp;&amp; data.getSchemaVersion() &lt; SessionStorageData.CURRENT_SCHEMA_VERSION;</span>
+<span class="fc bfc" id="L901" title="All 2 branches covered.">		if (schemaUpgrade)</span>
+		{
+<span class="fc" id="L903">			sessionStorage.backupPrimaryIfExists(&quot;schema-&quot; + data.getSchemaVersion());</span>
+		}
+<span class="fc" id="L905">		replaceSessionsFromStorageData(data);</span>
+<span class="fc bfc" id="L906" title="All 2 branches covered.">		if (schemaUpgrade)</span>
+		{
+<span class="fc" id="L908">			saveToConfig();</span>
+		}
+<span class="fc" id="L910">		sessionStorage.archivePrimaryIfNeeded().ifPresent(this::replaceSessionsFromStorageData);</span>
+<span class="fc" id="L911">	}</span>
+
+	private void replaceSessionsFromStorageData(SessionStorageData data)
+	{
+<span class="fc" id="L915">		sessions.clear();</span>
+<span class="fc bfc" id="L916" title="All 2 branches covered.">		List&lt;Session&gt; loadedSessions = !data.getThreads().isEmpty()</span>
+<span class="fc" id="L917">			? SplitThreadAdapter.toSessions(data.getThreads())</span>
+<span class="fc" id="L918">			: data.getSessions();</span>
+<span class="fc bfc" id="L919" title="All 2 branches covered.">		for (Session s : loadedSessions)</span>
+		{
+<span class="pc bpc" id="L921" title="2 of 4 branches missed.">			if (s != null &amp;&amp; s.getId() != null)</span>
+			{
+<span class="fc" id="L923">				sessions.put(s.getId(), s);</span>
+			}
+<span class="fc" id="L925">		}</span>
+
+		// Invalidate any cached mother-&gt;events when loading fresh data
+<span class="fc" id="L928">		motherEventsCache.clear();</span>
+
+<span class="fc" id="L930">		currentSessionId = emptyToNull(data.getCurrentSessionId());</span>
+<span class="fc bfc" id="L931" title="All 4 branches covered.">		if (currentSessionId != null &amp;&amp; !sessions.containsKey(currentSessionId))</span>
+		{
+<span class="fc" id="L933">			log.warn(&quot;Persisted current session id {} was not found in persisted sessions&quot;, currentSessionId);</span>
+<span class="fc" id="L934">			currentSessionId = null;</span>
+		}
+<span class="fc" id="L936">		Session current = getCurrentSession().orElse(null);</span>
+<span class="pc bpc" id="L937" title="3 of 6 branches missed.">		historyLoaded = current != null &amp;&amp; !current.isActive() &amp;&amp; data.isHistoryLoaded();</span>
+<span class="fc" id="L938">	}</span>
+
+	/**
+	 * Persist sessions and current view state to the plugin's versioned JSON store.
+	 */
+	public void saveToConfig()
+	{
+<span class="fc" id="L945">		SessionStorageData data = buildStorageData();</span>
+<span class="fc bfc" id="L946" title="All 2 branches covered.">		if (!sessionStorage.save(data))</span>
+		{
+<span class="fc" id="L948">			log.warn(&quot;Failed to save sessions to {}&quot;, sessionStorage.describeLocation());</span>
+		}
+<span class="fc" id="L950">	}</span>
+
+	public boolean hasArchivedSessionFiles()
+	{
+<span class="fc" id="L954">		return sessionStorage.hasArchives();</span>
+	}
+
+	private SessionStorageData loadPersistedData()
+	{
+<span class="fc bfc" id="L959" title="All 2 branches covered.">		if (sessionStorage.exists())</span>
+		{
+<span class="fc" id="L961">			return sessionStorage.load();</span>
+		}
+
+<span class="pc bpc" id="L964" title="2 of 4 branches missed.">		if (sessionStorage.isLegacyConfigStore() || !sessionStorage.hasLegacyData(config))</span>
+		{
+<span class="nc" id="L966">			return sessionStorage.load();</span>
+		}
+<span class="fc bfc" id="L968" title="All 2 branches covered.">		if (!sessionStorage.canMigrateLegacy(config))</span>
+		{
+<span class="fc" id="L970">			return sessionStorage.load();</span>
+		}
+
+<span class="fc" id="L973">		SessionStorageData legacyData = sessionStorage.loadLegacy(config);</span>
+<span class="fc bfc" id="L974" title="All 2 branches covered.">		if (sessionStorage.save(legacyData))</span>
+		{
+<span class="fc" id="L976">			sessionStorage.clearLegacySessionConfig(config);</span>
+		}
+		else
+		{
+<span class="fc" id="L980">			log.warn(&quot;Legacy session config was not cleared because migration to {} failed&quot;, sessionStorage.describeLocation());</span>
+		}
+<span class="fc" id="L982">		return legacyData;</span>
+	}
+
+	private SessionStorageData buildStorageData()
+	{
+<span class="fc" id="L987">		SessionStorageData data = new SessionStorageData();</span>
+<span class="fc" id="L988">		data.setSessions(new ArrayList&lt;&gt;(sessions.values()));</span>
+<span class="fc" id="L989">		data.setThreads(SplitThreadAdapter.fromSessions(new ArrayList&lt;&gt;(sessions.values())));</span>
+<span class="fc" id="L990">		data.setCurrentSessionId(currentSessionId);</span>
+<span class="fc" id="L991">		data.setHistoryLoaded(historyLoaded);</span>
+<span class="fc" id="L992">		return data;</span>
+	}
+
+	/**
+	 * Export all sessions as JSON for sharing or backups.
+	 */
+	public String exportAllSessionsJson()
+	{
+<span class="fc" id="L1000">		return gson.toJson(sessions.values());</span>
+	}
+
+	/**
+	 * Export all completed history threads as JSON.
+	 */
+	public String exportHistorySessionsJson()
+	{
+<span class="fc" id="L1008">		Set&lt;String&gt; historyRootIds = getHistorySessionsNewestFirst().stream()</span>
+<span class="fc" id="L1009">			.map(Session::getId)</span>
+<span class="fc" id="L1010">			.collect(Collectors.toCollection(LinkedHashSet::new));</span>
+<span class="fc" id="L1011">		List&lt;Session&gt; historySessions = sessions.values().stream()</span>
+<span class="fc" id="L1012">			.filter(session -&gt; historyRootIds.contains(getRootSessionId(session)))</span>
+<span class="fc" id="L1013">			.collect(Collectors.toList());</span>
+<span class="fc" id="L1014">		return gson.toJson(historySessions);</span>
+	}
+
+	/**
+	 * Export a single session by id as JSON.
+	 *
+	 * @return JSON for the specified session, or empty string when not found
+	 */
+	public String exportSessionJson(String sessionId)
+	{
+<span class="fc" id="L1024">		Session session = sessions.get(sessionId);</span>
+<span class="pc bpc" id="L1025" title="1 of 2 branches missed.">		return session == null ? &quot;&quot; : gson.toJson(session);</span>
+	}
+
+	/**
+	 * Export the selected history thread as JSON, including root and child segments.
+	 *
+	 * @return JSON for the selected session thread, or empty string when not found
+	 */
+	public String exportSessionThreadJson(String sessionId)
+	{
+<span class="fc" id="L1035">		Session selected = sessions.get(sessionId);</span>
+<span class="fc bfc" id="L1036" title="All 2 branches covered.">		if (selected == null)</span>
+		{
+<span class="fc" id="L1038">			return &quot;&quot;;</span>
+		}
+<span class="fc" id="L1040">		String rootId = getRootSessionId(selected);</span>
+<span class="fc" id="L1041">		List&lt;Session&gt; threadSessions = sessions.values().stream()</span>
+<span class="fc" id="L1042">			.filter(session -&gt; rootId.equals(getRootSessionId(session)))</span>
+<span class="fc" id="L1043">			.collect(Collectors.toList());</span>
+<span class="fc" id="L1044">		return gson.toJson(threadSessions);</span>
+	}
+
+	/**
+	 * Import one or more completed history threads from JSON.
+	 * The payload must contain at least one closed mother session and all children must reference
+	 * a root session present in the same payload. Imported sessions are remapped to fresh ids.
+	 *
+	 * @param json JSON payload containing an array of completed sessions
+	 * @return number of imported mother sessions, or 0 when the payload is invalid
+	 */
+	public int importHistorySessionsJson(String json)
+	{
+<span class="pc bpc" id="L1057" title="1 of 4 branches missed.">		if (json == null || json.trim().isEmpty())</span>
+		{
+<span class="fc" id="L1059">			return 0;</span>
+		}
+
+		try
+		{
+<span class="fc" id="L1064">			String trimmed = json.trim();</span>
+			Session[] arr;
+<span class="fc bfc" id="L1066" title="All 2 branches covered.">			if (trimmed.startsWith(&quot;{&quot;))</span>
+			{
+<span class="fc" id="L1068">				SessionStorageData data = gson.fromJson(trimmed, SessionStorageData.class);</span>
+<span class="pc bpc" id="L1069" title="2 of 4 branches missed.">				List&lt;Session&gt; importedSessions = data != null &amp;&amp; !data.getThreads().isEmpty()</span>
+<span class="fc" id="L1070">					? SplitThreadAdapter.toSessions(data.getThreads())</span>
+<span class="pc bnc" id="L1071" title="All 2 branches missed.">					: (data == null ? Collections.emptyList() : data.getSessions());</span>
+<span class="fc" id="L1072">				arr = importedSessions.toArray(new Session[0]);</span>
+<span class="fc" id="L1073">			}</span>
+			else
+			{
+<span class="fc" id="L1076">				arr = gson.fromJson(trimmed, Session[].class);</span>
+			}
+<span class="pc bpc" id="L1078" title="1 of 4 branches missed.">			if (arr == null || arr.length == 0)</span>
+			{
+<span class="fc" id="L1080">				return 0;</span>
+			}
+
+<span class="fc" id="L1083">			LinkedHashMap&lt;String, Session&gt; importedById = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L1084" title="All 2 branches covered.">			for (Session session : arr)</span>
+			{
+<span class="fc bfc" id="L1086" title="All 2 branches covered.">				if (!isImportableHistorySession(session))</span>
+				{
+<span class="fc" id="L1088">					return 0;</span>
+				}
+<span class="fc bfc" id="L1090" title="All 2 branches covered.">				if (importedById.put(session.getId(), session) != null)</span>
+				{
+<span class="fc" id="L1092">					return 0;</span>
+				}
+			}
+
+<span class="fc" id="L1096">			List&lt;Session&gt; roots = importedById.values().stream()</span>
+<span class="fc bfc" id="L1097" title="All 2 branches covered.">				.filter(session -&gt; session.getMotherId() == null)</span>
+<span class="fc" id="L1098">				.collect(Collectors.toList());</span>
+<span class="fc bfc" id="L1099" title="All 2 branches covered.">			if (roots.isEmpty())</span>
+			{
+<span class="fc" id="L1101">				return 0;</span>
+			}
+
+<span class="fc bfc" id="L1104" title="All 2 branches covered.">			for (Session session : importedById.values())</span>
+			{
+<span class="fc bfc" id="L1106" title="All 2 branches covered.">				if (session.getMotherId() == null)</span>
+				{
+<span class="fc" id="L1108">					continue;</span>
+				}
+<span class="fc" id="L1110">				Session mother = importedById.get(session.getMotherId());</span>
+<span class="pc bpc" id="L1111" title="2 of 4 branches missed.">				if (mother == null || mother.getMotherId() != null)</span>
+				{
+<span class="nc" id="L1113">					return 0;</span>
+				}
+<span class="fc" id="L1115">			}</span>
+
+<span class="fc" id="L1117">			List&lt;Session&gt; importedSessions = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L1118" title="All 2 branches covered.">			for (Session root : roots)</span>
+			{
+<span class="fc" id="L1120">				String rootId = root.getId();</span>
+<span class="fc" id="L1121">				String newRootId = newId();</span>
+<span class="fc" id="L1122">				importedSessions.add(copySessionForImport(root, newRootId, null));</span>
+
+<span class="fc" id="L1124">				List&lt;Session&gt; children = importedById.values().stream()</span>
+<span class="fc" id="L1125">					.filter(session -&gt; rootId.equals(session.getMotherId()))</span>
+<span class="fc" id="L1126">					.sorted(Comparator.comparing(Session::getStart))</span>
+<span class="fc" id="L1127">					.collect(Collectors.toList());</span>
+<span class="fc bfc" id="L1128" title="All 2 branches covered.">				for (Session child : children)</span>
+				{
+<span class="fc" id="L1130">					importedSessions.add(copySessionForImport(child, newId(), newRootId));</span>
+<span class="fc" id="L1131">				}</span>
+<span class="fc" id="L1132">			}</span>
+
+<span class="fc bfc" id="L1134" title="All 2 branches covered.">			for (Session session : importedSessions)</span>
+			{
+<span class="fc" id="L1136">				sessions.put(session.getId(), session);</span>
+<span class="fc" id="L1137">			}</span>
+<span class="fc" id="L1138">			motherEventsCache.clear();</span>
+<span class="fc" id="L1139">			clearHistoryEditUndo();</span>
+<span class="fc" id="L1140">			saveToConfig();</span>
+<span class="fc" id="L1141">			return roots.size();</span>
+		}
+<span class="fc" id="L1143">		catch (Exception e)</span>
+		{
+<span class="fc" id="L1145">			log.warn(&quot;Failed to import history sessions from JSON&quot;, e);</span>
+<span class="fc" id="L1146">			return 0;</span>
+		}
+	}
+
+	private String getRootSessionId(Session session)
+	{
+<span class="fc bfc" id="L1152" title="All 2 branches covered.">		return session.getMotherId() == null ? session.getId() : session.getMotherId();</span>
+	}
+
+	private boolean isImportableHistorySession(Session session)
+	{
+<span class="pc bpc" id="L1157" title="3 of 6 branches missed.">		if (session == null || session.getId() == null || session.getStart() == null)</span>
+		{
+<span class="nc" id="L1159">			return false;</span>
+		}
+<span class="fc bfc" id="L1161" title="All 2 branches covered.">		if (session.isActive())</span>
+		{
+<span class="fc" id="L1163">			return false;</span>
+		}
+<span class="pc bpc" id="L1165" title="1 of 4 branches missed.">		return session.getMotherId() == null || !session.getMotherId().trim().isEmpty();</span>
+	}
+
+	private Session copySessionForImport(Session source, String id, String motherId)
+	{
+<span class="fc" id="L1170">		Session copy = new Session(id, source.getStart(), motherId);</span>
+<span class="fc" id="L1171">		copy.setEnd(source.getEnd());</span>
+<span class="fc" id="L1172">		copy.setPluginVersion(source.getPluginVersion());</span>
+<span class="fc" id="L1173">		copy.setSettlementConfigAtStart(source.getSettlementConfigAtStart());</span>
+<span class="fc" id="L1174">		copy.setSettlementConfigAtEnd(source.getSettlementConfigAtEnd());</span>
+<span class="fc" id="L1175">		copy.setAltMappingAtStart(source.getAltMappingAtStart());</span>
+<span class="fc" id="L1176">		copy.setAltMappingAtEnd(source.getAltMappingAtEnd());</span>
+<span class="pc bpc" id="L1177" title="1 of 2 branches missed.">		if (source.getPlayers() != null)</span>
+		{
+<span class="fc" id="L1179">			copy.getPlayers().addAll(source.getPlayers());</span>
+		}
+<span class="pc bpc" id="L1181" title="1 of 2 branches missed.">		if (source.getEvents() != null)</span>
+		{
+<span class="fc bfc" id="L1183" title="All 2 branches covered.">			for (SplitEvent event : source.getEvents())</span>
+			{
+<span class="pc bpc" id="L1185" title="1 of 2 branches missed.">				if (event == null)</span>
+				{
+<span class="nc" id="L1187">					continue;</span>
+				}
+<span class="fc" id="L1189">				copy.getEvents().add(copyEventForSession(event, id));</span>
+<span class="fc" id="L1190">			}</span>
+		}
+<span class="fc" id="L1192">		return copy;</span>
+	}
+
+	/**
+	 * @return unmodifiable set of all known player names (mains and alts).
+	 */
+	public Set&lt;String&gt; getKnownPlayers()
+	{
+<span class="fc" id="L1200">		Set&lt;String&gt; mains = playerManager.getKnownMains();</span>
+<span class="fc bfc" id="L1201" title="All 2 branches covered.">		if (mains == null)</span>
+		{
+<span class="fc" id="L1203">			return Collections.emptySet();</span>
+		}
+<span class="fc" id="L1205">		return Collections.unmodifiableSet(mains);</span>
+	}
+
+	/**
+	 * Compute known main players not currently active in the session roster.
+	 *
+	 * @return set of eligible names to add to the current session
+	 */
+	public Set&lt;String&gt; getNonActivePlayers()
+	{
+<span class="fc" id="L1215">		Session curr = getCurrentEditableSession().orElse(null);</span>
+<span class="fc" id="L1216">		Set&lt;String&gt; mains = playerManager.getKnownMains();</span>
+<span class="fc bfc" id="L1217" title="All 2 branches covered.">		if (mains == null)</span>
+		{
+<span class="fc" id="L1219">			return Collections.emptySet();</span>
+		}
+
+<span class="pc bpc" id="L1222" title="1 of 6 branches missed.">		if (curr == null || (!historyLoaded &amp;&amp; !curr.isActive()))</span>
+		{
+<span class="fc" id="L1224">			return Collections.unmodifiableSet(mains);</span>
+		}
+
+<span class="fc" id="L1227">		Set&lt;String&gt; nonActivePlayers = mains.stream()</span>
+<span class="fc" id="L1228">			.filter(p -&gt; curr.getPlayers().stream().noneMatch(active -&gt; active.equalsIgnoreCase(p)))</span>
+<span class="fc" id="L1229">			.collect(Collectors.toCollection(LinkedHashSet::new));</span>
+<span class="fc" id="L1230">		return Collections.unmodifiableSet(nonActivePlayers);</span>
+	}
+
+	/**
+	 * @return Optional of the currently active child session, if any. Empty if no session is active.
+	 */
+	public Optional&lt;Session&gt; getCurrentSession()
+	{
+<span class="fc" id="L1238">		return Optional.ofNullable(currentSessionId).map(sessions::get);</span>
+	}
+
+	/**
+	 * @return all sessions (mother and children) sorted by start time descending (newest first).
+	 */
+	public List&lt;Session&gt; getAllSessionsNewestFirst()
+	{
+<span class="fc" id="L1246">		return sessions.values().stream()</span>
+<span class="fc" id="L1247">			.sorted(Comparator.comparing(Session::getStart).reversed())</span>
+<span class="fc" id="L1248">			.collect(Collectors.toList());</span>
+	}
+
+	/**
+	 * @return completed root sessions sorted by start time descending for the history picker.
+	 */
+	public List&lt;Session&gt; getHistorySessionsNewestFirst()
+	{
+<span class="fc" id="L1256">		return sessions.values().stream()</span>
+<span class="fc bfc" id="L1257" title="All 2 branches covered.">			.filter(session -&gt; session.getMotherId() == null)</span>
+<span class="fc bfc" id="L1258" title="All 2 branches covered.">			.filter(session -&gt; !session.isActive())</span>
+<span class="fc" id="L1259">			.sorted(Comparator.comparing(Session::getStart).reversed())</span>
+<span class="fc" id="L1260">			.collect(Collectors.toList());</span>
+	}
+
+	/**
+	 * Exit history mode and return to live mode.
+	 * Persists the flag immediately.
+	 */
+	public void unloadHistory()
+	{
+<span class="fc" id="L1269">		clearHistoryEditUndo();</span>
+<span class="pc bpc" id="L1270" title="1 of 2 branches missed.">		if (historyLoaded)</span>
+		{
+<span class="fc" id="L1272">			currentSessionId = null;</span>
+		}
+<span class="pc bpc" id="L1274" title="1 of 2 branches missed.">		if (historyDirty)</span>
+		{
+<span class="nc" id="L1276">			restoreOriginalHistorySessions();</span>
+		}
+<span class="fc" id="L1278">		historyLoaded = false;</span>
+<span class="fc" id="L1279">		historyDirty = false;</span>
+<span class="fc" id="L1280">		historyEditWarningAccepted = false;</span>
+<span class="fc" id="L1281">		historyOriginalSessionsJson = null;</span>
+<span class="fc" id="L1282">		saveToConfig();</span>
+<span class="fc" id="L1283">	}</span>
+
+	/**
+	 * Enter history mode by selecting a completed session to view or edit.
+	 * Requires that no active session is running. Persists the flag immediately.
+	 *
+	 * @param sessionId id of the session (mother or child) to load
+	 * @return the loaded session if found and preconditions met; empty otherwise
+	 */
+	public Optional&lt;Session&gt; loadHistory(String sessionId)
+	{
+<span class="fc" id="L1294">		clearHistoryEditUndo();</span>
+<span class="fc bfc" id="L1295" title="All 2 branches covered.">		if (hasActiveSession())</span>
+		{
+<span class="fc" id="L1297">			return Optional.empty(); // must stop active first</span>
+		}
+<span class="fc" id="L1299">		Session s = sessions.get(sessionId);</span>
+<span class="pc bpc" id="L1300" title="1 of 4 branches missed.">		if (s == null || s.isActive())</span>
+		{
+<span class="fc" id="L1302">			return Optional.empty();</span>
+		}
+<span class="fc" id="L1304">		historyOriginalSessionsJson = gson.toJson(sessions.values());</span>
+<span class="fc" id="L1305">		historyDirty = false;</span>
+<span class="fc" id="L1306">		historyEditWarningAccepted = false;</span>
+<span class="fc" id="L1307">		currentSessionId = s.getId();</span>
+<span class="fc" id="L1308">		historyLoaded = true;</span>
+<span class="fc" id="L1309">		saveToConfig();</span>
+<span class="fc" id="L1310">		return Optional.of(s);</span>
+	}
+
+	public boolean saveHistoryChanges()
+	{
+<span class="fc bfc" id="L1315" title="All 2 branches covered.">		if (!historyLoaded)</span>
+		{
+<span class="fc" id="L1317">			return false;</span>
+		}
+<span class="fc" id="L1319">		clearHistoryEditUndo();</span>
+<span class="fc" id="L1320">		historyDirty = false;</span>
+<span class="fc" id="L1321">		historyEditWarningAccepted = false;</span>
+<span class="fc" id="L1322">		historyOriginalSessionsJson = gson.toJson(sessions.values());</span>
+<span class="fc" id="L1323">		saveToConfig();</span>
+<span class="fc" id="L1324">		return true;</span>
+	}
+
+	public boolean discardHistoryChanges()
+	{
+<span class="fc bfc" id="L1329" title="All 2 branches covered.">		if (!historyLoaded)</span>
+		{
+<span class="fc" id="L1331">			return false;</span>
+		}
+<span class="fc" id="L1333">		clearHistoryEditUndo();</span>
+<span class="fc" id="L1334">		String selectedSessionId = currentSessionId;</span>
+<span class="fc bfc" id="L1335" title="All 2 branches covered.">		if (historyDirty)</span>
+		{
+<span class="fc" id="L1337">			restoreOriginalHistorySessions();</span>
+		}
+<span class="fc" id="L1339">		currentSessionId = selectedSessionId;</span>
+<span class="fc" id="L1340">		historyLoaded = true;</span>
+<span class="fc" id="L1341">		historyDirty = false;</span>
+<span class="fc" id="L1342">		historyEditWarningAccepted = false;</span>
+<span class="fc" id="L1343">		historyOriginalSessionsJson = gson.toJson(sessions.values());</span>
+<span class="fc" id="L1344">		saveToConfig();</span>
+<span class="fc" id="L1345">		return true;</span>
+	}
+
+	private void restoreOriginalHistorySessions()
+	{
+<span class="pc bpc" id="L1350" title="2 of 4 branches missed.">		if (historyOriginalSessionsJson == null || historyOriginalSessionsJson.trim().isEmpty())</span>
+		{
+<span class="nc" id="L1352">			loadFromConfig();</span>
+<span class="nc" id="L1353">			return;</span>
+		}
+		try
+		{
+<span class="fc" id="L1357">			Session[] arr = gson.fromJson(historyOriginalSessionsJson, Session[].class);</span>
+<span class="fc" id="L1358">			sessions.clear();</span>
+<span class="pc bpc" id="L1359" title="1 of 2 branches missed.">			if (arr != null)</span>
+			{
+<span class="fc bfc" id="L1361" title="All 2 branches covered.">				for (Session session : arr)</span>
+				{
+<span class="pc bpc" id="L1363" title="2 of 4 branches missed.">					if (session != null &amp;&amp; session.getId() != null)</span>
+					{
+<span class="fc" id="L1365">						sessions.put(session.getId(), session);</span>
+					}
+				}
+			}
+<span class="fc" id="L1369">			motherEventsCache.clear();</span>
+		}
+<span class="nc" id="L1371">		catch (Exception e)</span>
+		{
+<span class="nc" id="L1373">			log.warn(&quot;Failed to restore unsaved history edits; reloading persisted sessions&quot;, e);</span>
+<span class="nc" id="L1374">			loadFromConfig();</span>
+<span class="fc" id="L1375">		}</span>
+<span class="fc" id="L1376">	}</span>
+
+	/**
+	 * @return true if there is a current child session and its end time is null (active).
+	 */
+	public boolean hasActiveSession()
+	{
+<span class="fc" id="L1383">		return getCurrentSession().map(Session::isActive).orElse(false);</span>
+	}
+
+	public Optional&lt;Session&gt; getCurrentEditableSession()
+	{
+<span class="fc" id="L1388">		Session current = getCurrentSession().orElse(null);</span>
+<span class="fc bfc" id="L1389" title="All 2 branches covered.">		if (current == null)</span>
+		{
+<span class="fc" id="L1391">			return Optional.empty();</span>
+		}
+<span class="pc bpc" id="L1393" title="1 of 4 branches missed.">		if (!historyLoaded || current.getMotherId() != null)</span>
+		{
+<span class="fc" id="L1395">			return Optional.of(current);</span>
+		}
+<span class="fc" id="L1397">		List&lt;Session&gt; thread = getThreadSessions(current);</span>
+<span class="pc bpc" id="L1398" title="1 of 2 branches missed.">		for (int i = thread.size() - 1; i &gt;= 0; i--)</span>
+		{
+<span class="fc" id="L1400">			Session session = thread.get(i);</span>
+<span class="pc bpc" id="L1401" title="2 of 4 branches missed.">			if (session != null &amp;&amp; session.getMotherId() != null)</span>
+			{
+<span class="fc" id="L1403">				return Optional.of(session);</span>
+			}
+		}
+<span class="nc" id="L1406">		return Optional.empty();</span>
+	}
+
+	/**
+	 * Start a new session thread consisting of a mother session and an initial active child.
+	 * Fails if history mode is on or another session is currently active.
+	 *
+	 * @return the newly created active child session, if started
+	 */
+	public Optional&lt;Session&gt; startSession()
+	{
+<span class="fc" id="L1417">		clearHistoryEditUndo();</span>
+<span class="fc bfc" id="L1418" title="All 2 branches covered.">		if (historyLoaded)</span>
+		{
+<span class="fc" id="L1420">			return Optional.empty();</span>
+		}
+<span class="fc bfc" id="L1422" title="All 2 branches covered.">		if (hasActiveSession())</span>
+		{
+<span class="fc" id="L1424">			return Optional.empty();</span>
+		}
+
+		// Create mother and an initial child immediately (to mirror sheet)
+<span class="fc" id="L1428">		Session mother = new Session(newId(), Instant.now(), null);</span>
+<span class="fc" id="L1429">		mother.setSettlementConfigAtStart(currentSettlementConfigSnapshot());</span>
+<span class="fc" id="L1430">		mother.setAltMappingAtStart(currentAltMappingSnapshot());</span>
+<span class="fc" id="L1431">		sessions.put(mother.getId(), mother);</span>
+		// initialize empty cache list for this mother thread
+<span class="fc" id="L1433">		motherEventsCache.put(mother.getId(), new ArrayList&lt;&gt;());</span>
+
+<span class="fc" id="L1435">		Session child = new Session(newId(), Instant.now(), mother.getId());</span>
+<span class="fc" id="L1436">		sessions.put(child.getId(), child);</span>
+
+<span class="fc" id="L1438">		currentSessionId = child.getId();</span>
+<span class="fc" id="L1439">		saveToConfig();</span>
+<span class="fc bfc" id="L1440" title="All 2 branches covered.">		if (pluginManager != null)</span>
+		{
+<span class="fc" id="L1442">			pluginManager.updateChatWarningStatus();</span>
+		}
+<span class="fc" id="L1444">		return Optional.of(child);</span>
+	}
+
+	/**
+	 * Stop the currently active child session. If its mother session is still active,
+	 * it will be ended as well. No-op in history mode.
+	 *
+	 * @return true if an active session was stopped
+	 */
+	public boolean stopSession()
+	{
+<span class="fc" id="L1455">		clearHistoryEditUndo();</span>
+<span class="pc bpc" id="L1456" title="1 of 2 branches missed.">		if (historyLoaded)</span>
+		{
+<span class="nc" id="L1458">			return false;</span>
+		}
+
+<span class="fc" id="L1461">		Session curr = getCurrentSession().orElse(null);</span>
+<span class="pc bpc" id="L1462" title="2 of 4 branches missed.">		if (curr == null || !curr.isActive())</span>
+		{
+<span class="nc" id="L1464">			return false;</span>
+		}
+
+<span class="fc" id="L1467">		curr.setEnd(Instant.now());</span>
+
+		// If child has a mother which is active, end mother too.
+<span class="pc bpc" id="L1470" title="1 of 2 branches missed.">		if (curr.getMotherId() != null)</span>
+		{
+<span class="fc" id="L1472">			Session mother = sessions.get(curr.getMotherId());</span>
+<span class="pc bpc" id="L1473" title="2 of 4 branches missed.">			if (mother != null &amp;&amp; mother.isActive())</span>
+			{
+<span class="fc" id="L1475">				mother.setSettlementConfigAtEnd(currentSettlementConfigSnapshot());</span>
+<span class="fc" id="L1476">				mother.setAltMappingAtEnd(currentAltMappingSnapshot());</span>
+<span class="fc" id="L1477">				mother.setEnd(Instant.now());</span>
+			}
+		}
+
+<span class="fc" id="L1481">		currentSessionId = null;</span>
+<span class="fc" id="L1482">		saveToConfig();</span>
+<span class="pc bpc" id="L1483" title="1 of 2 branches missed.">		if (pluginManager != null)</span>
+		{
+<span class="fc" id="L1485">			pluginManager.updateChatWarningStatus();</span>
+		}
+<span class="fc" id="L1487">		return true;</span>
+	}
+
+	/**
+	 * Add a player to the currently active child session. If the child already has loot events recorded,
+	 * a new child session is forked (same mother), roster is copied, the player is added, and the
+	 * previous child is ended to preserve historical rosters per split segment.
+	 * Alt names are resolved to main before checks. No-op in history mode.
+	 *
+	 * @param player display name (main or alt)
+	 * @return true if the roster changed (player added)
+	 */
+	public boolean addPlayerToActive(String player)
+	{
+<span class="fc" id="L1501">		Session curr = getCurrentEditableSession().orElse(null);</span>
+<span class="pc bpc" id="L1502" title="2 of 6 branches missed.">		if (curr == null || (!historyLoaded &amp;&amp; !curr.isActive()))</span>
+		{
+<span class="nc" id="L1504">			return false;</span>
+		}
+
+<span class="fc" id="L1507">		String mainPlayer = resolveMainName(player);</span>
+<span class="pc bpc" id="L1508" title="2 of 4 branches missed.">		if (mainPlayer == null || mainPlayer.isBlank())</span>
+		{
+<span class="nc" id="L1510">			return false;</span>
+		}
+<span class="fc" id="L1512">		final String fMain = mainPlayer;</span>
+<span class="fc bfc" id="L1513" title="All 2 branches covered.">		if (curr.getPlayers().stream().anyMatch(p -&gt; p.equalsIgnoreCase(fMain)))</span>
+		{
+			// Player (main) already in session
+<span class="fc" id="L1516">			return false;</span>
+		}
+<span class="fc bfc" id="L1518" title="All 2 branches covered.">		if (!prepareHistoryMutation())</span>
+		{
+<span class="fc" id="L1520">			return false;</span>
+		}
+
+<span class="fc bfc" id="L1523" title="All 2 branches covered.">		if (historyLoaded)</span>
+		{
+<span class="fc" id="L1525">			SplitEvent joinEvent = new SplitEvent(curr.getId(), fMain, 0L, Instant.now());</span>
+<span class="fc" id="L1526">			joinEvent.setType(SplitEvent.TYPE_JOINED);</span>
+<span class="fc" id="L1527">			List&lt;SplitEvent&gt; events = new ArrayList&lt;&gt;(getAllEvents());</span>
+<span class="fc" id="L1528">			events.add(joinEvent);</span>
+<span class="fc" id="L1529">			TimelineValidation validation = validateTimeline(events, curr);</span>
+<span class="pc bpc" id="L1530" title="1 of 2 branches missed.">			if (!validation.valid)</span>
+			{
+<span class="nc" id="L1532">				lastMoveEventFailureMessage = validation.message;</span>
+<span class="nc" id="L1533">				return false;</span>
+			}
+<span class="pc bpc" id="L1535" title="1 of 2 branches missed.">			if (rebuildCurrentThreadFromEvents(events))</span>
+			{
+<span class="fc" id="L1537">				saveAfterMutation();</span>
+<span class="fc" id="L1538">				return true;</span>
+			}
+<span class="nc" id="L1540">			return false;</span>
+		}
+
+<span class="fc bfc" id="L1543" title="All 2 branches covered.">		if (curr.hasLootEvents())</span>
+		{
+			// Create a new child session, copy players, add this player, end current child
+<span class="pc bpc" id="L1546" title="1 of 2 branches missed.">			String motherId = curr.getMotherId() == null ? curr.getId() : curr.getMotherId();</span>
+<span class="fc" id="L1547">			Session newChild = new Session(newId(), Instant.now(), motherId);</span>
+			// copy players
+<span class="fc" id="L1549">			newChild.getPlayers().addAll(curr.getPlayers());</span>
+			// add the new player (main)
+<span class="fc" id="L1551">			newChild.getPlayers().add(fMain);</span>
+
+			// End current child (but keep events)
+<span class="fc" id="L1554">			curr.setEnd(Instant.now());</span>
+
+			// Record a JOINED event in the new child
+<span class="fc" id="L1557">			SplitEvent joinEvent = new SplitEvent(newChild.getId(), fMain, 0L, Instant.now());</span>
+<span class="fc" id="L1558">			joinEvent.setType(SplitEvent.TYPE_JOINED);</span>
+<span class="fc" id="L1559">			newChild.getEvents().add(joinEvent);</span>
+
+			// Update mother cache incrementally
+<span class="pc" id="L1562">			motherEventsCache.computeIfAbsent(motherId, k -&gt; new ArrayList&lt;&gt;()).add(joinEvent);</span>
+
+			// Activate new child
+<span class="fc" id="L1565">			sessions.put(newChild.getId(), newChild);</span>
+<span class="fc" id="L1566">			currentSessionId = newChild.getId();</span>
+<span class="fc" id="L1567">		}</span>
+		else
+		{
+<span class="fc" id="L1570">			curr.getPlayers().add(fMain);</span>
+			// Record a JOINED event in the current child (no loot events yet)
+<span class="fc" id="L1572">			SplitEvent joinEvent = new SplitEvent(curr.getId(), fMain, 0L, Instant.now());</span>
+<span class="fc" id="L1573">			joinEvent.setType(SplitEvent.TYPE_JOINED);</span>
+<span class="fc" id="L1574">			curr.getEvents().add(joinEvent);</span>
+
+			// Update mother cache incrementally
+<span class="pc bpc" id="L1577" title="1 of 2 branches missed.">			String motherId = curr.getMotherId() == null ? curr.getId() : curr.getMotherId();</span>
+<span class="pc" id="L1578">			motherEventsCache.computeIfAbsent(motherId, k -&gt; new ArrayList&lt;&gt;()).add(joinEvent);</span>
+		}
+<span class="fc" id="L1580">		saveAfterMutation();</span>
+<span class="fc" id="L1581">		return true;</span>
+	}
+
+	/**
+	 * Remove a player from the active child session. If the current child already has loot events,
+	 * a new child is created (same mother) without this player, and the current child is ended
+	 * to keep per-segment rosters intact. No-op in history mode.
+	 *
+	 * @param player display name (main or alt)
+	 * @return true if the roster changed (player removed)
+	 */
+	public boolean removePlayerFromSession(String player)
+	{
+<span class="fc" id="L1594">		Session curr = getCurrentEditableSession().orElse(null);</span>
+<span class="pc bpc" id="L1595" title="2 of 6 branches missed.">		if (curr == null || (!historyLoaded &amp;&amp; !curr.isActive()))</span>
+		{
+<span class="nc" id="L1597">			return false;</span>
+		}
+
+<span class="pc bpc" id="L1600" title="1 of 2 branches missed.">		if (player == null)</span>
+		{
+<span class="nc" id="L1602">			return false;</span>
+		}
+<span class="fc" id="L1604">		player = resolveMainName(player);</span>
+<span class="pc bpc" id="L1605" title="2 of 4 branches missed.">		if (player == null || player.isBlank())</span>
+		{
+<span class="nc" id="L1607">			return false;</span>
+		}
+<span class="fc" id="L1609">		String resolvedPlayer = player;</span>
+<span class="pc bpc" id="L1610" title="1 of 2 branches missed.">		if (curr.getPlayers().stream().noneMatch(p -&gt; p.equalsIgnoreCase(resolvedPlayer)))</span>
+		{
+<span class="nc" id="L1612">			return false;</span>
+		}
+<span class="pc bpc" id="L1614" title="1 of 2 branches missed.">		if (!prepareHistoryMutation())</span>
+		{
+<span class="nc" id="L1616">			return false;</span>
+		}
+
+<span class="fc bfc" id="L1619" title="All 2 branches covered.">		if (historyLoaded)</span>
+		{
+<span class="fc" id="L1621">			SplitEvent leaveEvent = new SplitEvent(curr.getId(), player, 0L, Instant.now());</span>
+<span class="fc" id="L1622">			leaveEvent.setType(SplitEvent.TYPE_LEFT);</span>
+<span class="fc" id="L1623">			List&lt;SplitEvent&gt; events = new ArrayList&lt;&gt;(getAllEvents());</span>
+<span class="fc" id="L1624">			events.add(leaveEvent);</span>
+<span class="fc" id="L1625">			TimelineValidation validation = validateTimeline(events, curr);</span>
+<span class="pc bpc" id="L1626" title="1 of 2 branches missed.">			if (!validation.valid)</span>
+			{
+<span class="nc" id="L1628">				lastMoveEventFailureMessage = validation.message;</span>
+<span class="nc" id="L1629">				return false;</span>
+			}
+<span class="pc bpc" id="L1631" title="1 of 2 branches missed.">			if (rebuildCurrentThreadFromEvents(events))</span>
+			{
+<span class="fc" id="L1633">				saveAfterMutation();</span>
+<span class="fc" id="L1634">				return true;</span>
+			}
+<span class="nc" id="L1636">			return false;</span>
+		}
+
+<span class="fc bfc" id="L1639" title="All 2 branches covered.">		if (curr.hasLootEvents())</span>
+		{
+			// Create a new child without this player, end current child
+<span class="pc bpc" id="L1642" title="1 of 2 branches missed.">			String motherId = curr.getMotherId() == null ? curr.getId() : curr.getMotherId();</span>
+<span class="fc" id="L1643">			Session newChild = new Session(newId(), Instant.now(), motherId);</span>
+<span class="fc" id="L1644">			String finalPlayer = player;</span>
+<span class="fc" id="L1645">			newChild.getPlayers().addAll(</span>
+<span class="fc bfc" id="L1646" title="All 2 branches covered.">				curr.getPlayers().stream().filter(p -&gt; !p.equalsIgnoreCase(finalPlayer)).collect(Collectors.toList())</span>
+			);
+
+			// End the current child
+<span class="fc" id="L1650">			curr.setEnd(Instant.now());</span>
+
+			// Record a LEFT event in the new child
+<span class="fc" id="L1653">			SplitEvent leaveEvent = new SplitEvent(newChild.getId(), finalPlayer, 0L, Instant.now());</span>
+<span class="fc" id="L1654">			leaveEvent.setType(SplitEvent.TYPE_LEFT);</span>
+<span class="fc" id="L1655">			newChild.getEvents().add(leaveEvent);</span>
+
+			// Update mother cache incrementally
+<span class="pc" id="L1658">			motherEventsCache.computeIfAbsent(motherId, k -&gt; new ArrayList&lt;&gt;()).add(leaveEvent);</span>
+
+<span class="fc" id="L1660">			sessions.put(newChild.getId(), newChild);</span>
+<span class="fc" id="L1661">			currentSessionId = newChild.getId();</span>
+<span class="fc" id="L1662">		}</span>
+		else
+		{
+<span class="fc" id="L1665">			String finalPlayer = player;</span>
+<span class="fc" id="L1666">			curr.getPlayers().removeIf(p -&gt; p.equalsIgnoreCase(finalPlayer));</span>
+			// Record a LEFT event in the current child (no loot events yet)
+<span class="fc" id="L1668">			SplitEvent leaveEvent = new SplitEvent(curr.getId(), player, 0L, Instant.now());</span>
+<span class="fc" id="L1669">			leaveEvent.setType(SplitEvent.TYPE_LEFT);</span>
+<span class="fc" id="L1670">			curr.getEvents().add(leaveEvent);</span>
+
+			// Update mother cache incrementally
+<span class="pc bpc" id="L1673" title="1 of 2 branches missed.">			String motherId = curr.getMotherId() == null ? curr.getId() : curr.getMotherId();</span>
+<span class="pc" id="L1674">			motherEventsCache.computeIfAbsent(motherId, k -&gt; new ArrayList&lt;&gt;()).add(leaveEvent);</span>
+		}
+<span class="fc" id="L1676">		saveAfterMutation();</span>
+<span class="fc" id="L1677">		return true;</span>
+	}
+
+	/**
+	 * Record a loot value for a player in the active session. The player is resolved to its main
+	 * and must be on the active roster. No-op in history mode.
+	 *
+	 * @param player display name (main or alt)
+	 * @param amount value in coins (may be negative if allowed by config)
+	 * @return true if recorded
+	 */
+	public boolean addLoot(String player, Long amount)
+	{
+<span class="fc" id="L1690">		Session currentSession = getCurrentEditableSession().orElse(null);</span>
+<span class="pc bpc" id="L1691" title="1 of 6 branches missed.">		if (currentSession == null || (!historyLoaded &amp;&amp; !currentSession.isActive()))</span>
+		{
+<span class="fc" id="L1693">			return false;</span>
+		}
+<span class="fc bfc" id="L1695" title="All 2 branches covered.">		if (amount == null)</span>
+		{
+<span class="fc" id="L1697">			return false;</span>
+		}
+
+<span class="fc" id="L1700">		String mainPlayer = resolveMainName(player);</span>
+<span class="pc bpc" id="L1701" title="1 of 4 branches missed.">		if (mainPlayer == null || mainPlayer.isBlank())</span>
+		{
+<span class="fc" id="L1703">			return false;</span>
+		}
+<span class="fc bfc" id="L1705" title="All 2 branches covered.">		if (currentSession.getPlayers().stream().noneMatch(p -&gt; p.equalsIgnoreCase(mainPlayer)))</span>
+		{
+<span class="fc" id="L1707">			return false;</span>
+		}
+<span class="pc bpc" id="L1709" title="1 of 2 branches missed.">		if (!prepareHistoryMutation())</span>
+		{
+<span class="nc" id="L1711">			return false;</span>
+		}
+
+<span class="fc" id="L1714">		SplitEvent newLoot = new SplitEvent(currentSession.getId(), mainPlayer, amount, Instant.now());</span>
+<span class="fc" id="L1715">		currentSession.getEvents().add(newLoot);</span>
+
+		// Update mother cache incrementally
+<span class="pc bpc" id="L1718" title="1 of 2 branches missed.">		String motherId = currentSession.getMotherId() == null ? currentSession.getId() : currentSession.getMotherId();</span>
+<span class="fc" id="L1719">		motherEventsCache.computeIfAbsent(motherId, k -&gt; new ArrayList&lt;&gt;()).add(newLoot);</span>
+
+<span class="fc" id="L1721">		saveAfterMutation();</span>
+<span class="fc" id="L1722">		return true;</span>
+	}
+
+	/**
+	 * Read-only view of the queued pending values detected from chat.
+	 */
+	public List&lt;PendingValue&gt; getPendingValues()
+	{
+<span class="fc" id="L1730">		return Collections.unmodifiableList(pendingValues);</span>
+	}
+
+	/**
+	 * Queue a new pending value. The suggested player is normalized to its main. If configured,
+	 * the value may be auto-applied (when the player is currently in session), in which case this
+	 * method records a loot and does not queue. A small cap prevents unbounded growth.
+	 *
+	 * @param pendingValue pending value payload; null is ignored
+	 */
+	public void addPendingValue(PendingValue pendingValue)
+	{
+<span class="pc bpc" id="L1742" title="1 of 4 branches missed.">		if (pendingValue == null || pendingValue.getValue() == null)</span>
+		{
+<span class="fc" id="L1744">			return;</span>
+		}
+
+		// Normalize suggestedPlayer player to main for all downstream uses
+<span class="fc" id="L1748">		String suggestedPlayer = pendingValue.getSuggestedPlayer();</span>
+<span class="fc" id="L1749">		String resolvedPlayer = resolveMainName(suggestedPlayer);</span>
+
+<span class="fc" id="L1751">		pendingValue.setSuggestedPlayer(resolvedPlayer);</span>
+
+<span class="pc bpc" id="L1753" title="2 of 6 branches missed.">		if (resolvedPlayer != null &amp;&amp; !resolvedPlayer.isBlank() &amp;&amp; !playerManager.isKnownPlayer(resolvedPlayer))</span>
+		{
+<span class="fc" id="L1755">			playerManager.addKnownPlayer(resolvedPlayer);</span>
+		}
+
+		// Auto-apply if configured and player already in session
+<span class="pc bpc" id="L1759" title="2 of 6 branches missed.">		if (resolvedPlayer != null &amp;&amp; config.autoApplyWhenInSession() &amp;&amp; hasActiveSession())</span>
+		{
+<span class="fc" id="L1761">			Session currentSession = getCurrentSession().orElse(null);</span>
+<span class="pc bpc" id="L1762" title="2 of 4 branches missed.">			if (currentSession != null &amp;&amp; currentSession.getPlayers().stream().anyMatch(p -&gt; p.equalsIgnoreCase(resolvedPlayer)))</span>
+			{
+<span class="fc" id="L1764">				addLoot(resolvedPlayer, pendingValue.getValue());</span>
+<span class="fc" id="L1765">				return; // do not queue</span>
+			}
+		}
+
+		// Limit size to avoid unbounded growth
+<span class="fc bfc" id="L1770" title="All 2 branches covered.">		if (pendingValues.size() &gt;= 100)</span>
+		{
+<span class="fc" id="L1772">			pendingValues.remove(0);</span>
+		}
+<span class="fc" id="L1774">		pendingValues.add(pendingValue);</span>
+<span class="fc" id="L1775">	}</span>
+
+	/**
+	 * Remove a pending value by its id.
+	 *
+	 * @param id unique pending id
+	 * @return true if removed
+	 */
+	public boolean removePendingValueById(String id)
+	{
+<span class="fc" id="L1785">		return pendingValues.removeIf(p -&gt; p.getId().equals(id));</span>
+	}
+
+	/**
+	 * Apply a pending value to a specific player and remove it from the queue.
+	 * The player is resolved to its main; the underlying addLoot() enforces roster rules.
+	 *
+	 * @param id     pending id
+	 * @param player target player (main or alt)
+	 * @return true if applied
+	 */
+	public boolean applyPendingValueToPlayer(String id, String player)
+	{
+<span class="fc" id="L1798">		PendingValue pv = pendingValues.stream().filter(p -&gt; p.getId().equals(id)).findFirst().orElse(null);</span>
+<span class="fc bfc" id="L1799" title="All 2 branches covered.">		if (pv == null)</span>
+		{
+<span class="fc" id="L1801">			return false;</span>
+		}
+<span class="fc" id="L1803">		String target = resolveMainName(player);</span>
+<span class="fc" id="L1804">		boolean ok = addLoot(target, pv.getValue());</span>
+<span class="pc bpc" id="L1805" title="1 of 2 branches missed.">		if (ok)</span>
+		{
+<span class="fc" id="L1807">			pendingValues.remove(pv);</span>
+		}
+<span class="fc" id="L1809">		return ok;</span>
+	}
+
+	/**
+	 * Returns true if the given player (main or alt) is present in the roster of the current session.
+	 * Alts are resolved to their main before the check.
+	 */
+	public boolean currentSessionHasPlayer(String player)
+	{
+<span class="fc" id="L1818">		return sessionHasPlayer(player, getCurrentSession().orElse(null));</span>
+	}
+
+	/**
+	 * Returns true if the given player (main or alt) is present in the roster of the provided session.
+	 * Alts are resolved to their main before the check.
+	 */
+	public boolean sessionHasPlayer(String player, Session session)
+	{
+<span class="fc bfc" id="L1827" title="All 2 branches covered.">		if (session == null)</span>
+		{
+<span class="fc" id="L1829">			return false;</span>
+		}
+
+<span class="fc" id="L1832">		String mainPlayer = resolveMainName(player);</span>
+<span class="fc bfc" id="L1833" title="All 2 branches covered.">		if (mainPlayer == null)</span>
+		{
+<span class="fc" id="L1835">			return false;</span>
+		}
+
+<span class="fc" id="L1838">		return session.getPlayers().stream().anyMatch(e -&gt;</span>
+<span class="fc" id="L1839">			e.equalsIgnoreCase(mainPlayer));</span>
+	}
+
+	public boolean currentThreadContainsPlayerName(String player)
+	{
+<span class="pc bpc" id="L1844" title="1 of 4 branches missed.">		if (player == null || player.trim().isEmpty())</span>
+		{
+<span class="fc" id="L1846">			return false;</span>
+		}
+<span class="fc" id="L1848">		Session current = getCurrentSession().orElse(null);</span>
+<span class="fc bfc" id="L1849" title="All 2 branches covered.">		if (current == null)</span>
+		{
+<span class="fc" id="L1851">			return false;</span>
+		}
+<span class="fc" id="L1853">		String target = player.trim();</span>
+<span class="fc bfc" id="L1854" title="All 2 branches covered.">		for (Session session : getThreadSessions(current))</span>
+		{
+<span class="pc bpc" id="L1856" title="1 of 4 branches missed.">			if (session == null || session.getMotherId() == null)</span>
+			{
+<span class="fc" id="L1858">				continue;</span>
+			}
+<span class="fc bfc" id="L1860" title="All 2 branches covered.">			if (session.getPlayers().stream().anyMatch(existing -&gt; existing.equalsIgnoreCase(target)))</span>
+			{
+<span class="fc" id="L1862">				return true;</span>
+			}
+<span class="fc bfc" id="L1864" title="All 2 branches covered.">			for (SplitEvent event : session.getEvents())</span>
+			{
+<span class="pc bpc" id="L1866" title="3 of 6 branches missed.">				if (event != null &amp;&amp; event.getPlayer() != null &amp;&amp; event.getPlayer().equalsIgnoreCase(target))</span>
+				{
+<span class="nc" id="L1868">					return true;</span>
+				}
+<span class="fc" id="L1870">			}</span>
+<span class="fc" id="L1871">		}</span>
+<span class="fc" id="L1872">		return false;</span>
+	}
+
+	public void init()
+	{
+<span class="fc" id="L1877">		loadFromConfig();</span>
+<span class="fc" id="L1878">	}</span>
+
+	public boolean prepareHistoryMutation()
+	{
+<span class="fc bfc" id="L1882" title="All 2 branches covered.">		if (!historyLoaded)</span>
+		{
+<span class="fc" id="L1884">			return true;</span>
+		}
+<span class="fc bfc" id="L1886" title="All 2 branches covered.">		if (isCurrentHistoryEditLocked())</span>
+		{
+<span class="fc" id="L1888">			return false;</span>
+		}
+<span class="fc bfc" id="L1890" title="All 2 branches covered.">		if (!historyEditWarningAccepted)</span>
+		{
+<span class="fc bfc" id="L1892" title="All 4 branches covered.">			boolean accepted = historyEditWarningHandler == null || historyEditWarningHandler.getAsBoolean();</span>
+<span class="fc bfc" id="L1893" title="All 2 branches covered.">			if (!accepted)</span>
+			{
+<span class="fc" id="L1895">				return false;</span>
+			}
+<span class="fc" id="L1897">			historyEditWarningAccepted = true;</span>
+		}
+<span class="fc" id="L1899">		historyDirty = true;</span>
+<span class="fc" id="L1900">		return true;</span>
+	}
+
+	public boolean isCurrentHistoryEditLocked()
+	{
+<span class="fc bfc" id="L1905" title="All 2 branches covered.">		if (!historyLoaded)</span>
+		{
+<span class="fc" id="L1907">			return false;</span>
+		}
+<span class="fc" id="L1909">		Session current = getCurrentSession().orElse(null);</span>
+<span class="fc" id="L1910">		return isHistoryEditLocked(current);</span>
+	}
+
+	private boolean isHistoryEditLocked(Session session)
+	{
+<span class="pc bpc" id="L1915" title="1 of 2 branches missed.">		if (session == null)</span>
+		{
+<span class="nc" id="L1917">			return true;</span>
+		}
+<span class="fc bfc" id="L1919" title="All 2 branches covered.">		for (Session threadSession : getThreadSessions(session))</span>
+		{
+<span class="fc bfc" id="L1921" title="All 2 branches covered.">			if (isVersionBefore(threadSession.getPluginVersion(), MIN_HISTORY_EDIT_VERSION))</span>
+			{
+<span class="fc" id="L1923">				return true;</span>
+			}
+<span class="fc" id="L1925">		}</span>
+<span class="fc" id="L1926">		return false;</span>
+	}
+
+	private static boolean isVersionBefore(String version, String minimumVersion)
+	{
+<span class="pc bpc" id="L1931" title="1 of 4 branches missed.">		if (version == null || version.trim().isEmpty())</span>
+		{
+<span class="fc" id="L1933">			return true;</span>
+		}
+<span class="fc" id="L1935">		int[] parsedVersion = parseVersion(version);</span>
+<span class="fc" id="L1936">		int[] parsedMinimum = parseVersion(minimumVersion);</span>
+<span class="fc bfc" id="L1937" title="All 2 branches covered.">		for (int i = 0; i &lt; parsedMinimum.length; i++)</span>
+		{
+<span class="fc bfc" id="L1939" title="All 2 branches covered.">			if (parsedVersion[i] != parsedMinimum[i])</span>
+			{
+<span class="pc bpc" id="L1941" title="1 of 2 branches missed.">				return parsedVersion[i] &lt; parsedMinimum[i];</span>
+			}
+		}
+<span class="fc" id="L1944">		return false;</span>
+	}
+
+	private static int[] parseVersion(String version)
+	{
+<span class="fc" id="L1949">		int[] parts = new int[]{0, 0, 0};</span>
+<span class="fc" id="L1950">		String[] tokens = version.split(&quot;\\.&quot;);</span>
+<span class="pc bpc" id="L1951" title="1 of 4 branches missed.">		for (int i = 0; i &lt; parts.length &amp;&amp; i &lt; tokens.length; i++)</span>
+		{
+			try
+			{
+<span class="fc" id="L1955">				parts[i] = Integer.parseInt(tokens[i].replaceAll(&quot;[^0-9].*$&quot;, &quot;&quot;));</span>
+			}
+<span class="nc" id="L1957">			catch (NumberFormatException e)</span>
+			{
+<span class="nc" id="L1959">				parts[i] = 0;</span>
+<span class="fc" id="L1960">			}</span>
+		}
+<span class="fc" id="L1962">		return parts;</span>
+	}
+
+	public void markHistoryMutation()
+	{
+<span class="fc" id="L1967">		clearHistoryEditUndo();</span>
+<span class="fc" id="L1968">		markHistoryTableMutation();</span>
+<span class="fc" id="L1969">	}</span>
+
+	private void markHistoryTableMutation()
+	{
+<span class="fc bfc" id="L1973" title="All 2 branches covered.">		if (historyLoaded)</span>
+		{
+<span class="fc" id="L1975">			historyDirty = true;</span>
+<span class="fc" id="L1976">			invalidateEventsCache();</span>
+<span class="fc" id="L1977">			return;</span>
+		}
+<span class="fc" id="L1979">		saveToConfig();</span>
+<span class="fc" id="L1980">	}</span>
+
+	private void saveAfterMutation()
+	{
+<span class="fc" id="L1984">		clearHistoryEditUndo();</span>
+<span class="fc" id="L1985">		saveAfterHistoryTableMutation();</span>
+<span class="fc" id="L1986">	}</span>
+
+	private void saveAfterHistoryTableMutation()
+	{
+<span class="fc bfc" id="L1990" title="All 2 branches covered.">		if (historyLoaded)</span>
+		{
+<span class="fc" id="L1992">			historyDirty = true;</span>
+<span class="fc" id="L1993">			return;</span>
+		}
+<span class="fc" id="L1995">		saveToConfig();</span>
+<span class="fc" id="L1996">	}</span>
+
+	/**
+	 * Compute metrics for the given session's thread (mother + children) including only currently active players.
+	 *
+	 * @param s a session within the thread to compute against
+	 * @return list of PlayerMetrics rows (non-zero totals only)
+	 */
+	public List&lt;PlayerMetrics&gt; computeMetricsFor(Session s)
+	{
+<span class="fc" id="L2006">		return computeMetricsFor(s, false);</span>
+	}
+
+	/**
+	 * Compute metrics for the given session's thread (mother + children).
+	 * When includeNonActivePlayers is true, any player appearing in the thread or known list may be included.
+	 * Otherwise, only players on the provided session's current roster are considered for output.
+	 * Players with zero total and zero split are omitted.
+	 *
+	 * @param s                       a session within the thread to compute against
+	 * @param includeNonActivePlayers whether to include players outside the current roster
+	 * @return list of PlayerMetrics rows
+	 */
+	public List&lt;PlayerMetrics&gt; computeMetricsFor(Session s, boolean includeNonActivePlayers)
+	{
+<span class="fc bfc" id="L2021" title="All 2 branches covered.">		if (s == null)</span>
+		{
+<span class="fc" id="L2023">			return List.of();</span>
+		}
+
+<span class="fc" id="L2026">		return splitCalculator.compute(</span>
+			s,
+<span class="fc" id="L2028">			getThreadSessions(s),</span>
+<span class="fc" id="L2029">			playerManager.getKnownPlayers(),</span>
+			includeNonActivePlayers,
+<span class="fc" id="L2031">			buildGeTaxSettings(s));</span>
+	}
+
+	public List&lt;PlayerMetrics&gt; computeMetricsFor(Session s,
+	                                             boolean includeNonActivePlayers,
+	                                             SettlementConfigSnapshot overrideSnapshot)
+	{
+<span class="fc bfc" id="L2038" title="All 2 branches covered.">		if (s == null)</span>
+		{
+<span class="fc" id="L2040">			return List.of();</span>
+		}
+
+<span class="fc" id="L2043">		return splitCalculator.compute(</span>
+			s,
+<span class="fc" id="L2045">			getThreadSessions(s),</span>
+<span class="fc" id="L2046">			playerManager.getKnownPlayers(),</span>
+			includeNonActivePlayers,
+<span class="fc" id="L2048">			buildGeTaxSettings(overrideSnapshot));</span>
+	}
+
+	private SplitCalculator.GeTaxSettings buildGeTaxSettings(Session session)
+	{
+<span class="fc" id="L2053">		SettlementConfigSnapshot snapshot = getHistoricalSettlementConfigSnapshot(session);</span>
+<span class="fc bfc" id="L2054" title="All 2 branches covered.">		if (snapshot != null)</span>
+		{
+<span class="fc" id="L2056">			return buildGeTaxSettings(snapshot);</span>
+		}
+<span class="fc" id="L2058">		return buildGeTaxSettings(currentSettlementConfigSnapshot());</span>
+	}
+
+	private SplitCalculator.GeTaxSettings buildGeTaxSettings(SettlementConfigSnapshot snapshot)
+	{
+<span class="pc bpc" id="L2063" title="1 of 4 branches missed.">		if (snapshot == null || !snapshot.isAccountForGeTax())</span>
+		{
+<span class="fc" id="L2065">			return SplitCalculator.GeTaxSettings.disabled();</span>
+		}
+
+<span class="fc" id="L2068">		return new SplitCalculator.GeTaxSettings(</span>
+			true,
+<span class="fc" id="L2070">			parseGeTaxMinimumValue(snapshot.getGeTaxMinimumValue()),</span>
+<span class="fc" id="L2071">			sanitizeGeTaxPercent(snapshot.getGeTaxPercent()),</span>
+<span class="fc" id="L2072">			parseGeTaxMaxPerLoot(snapshot.getGeTaxMaxPerLoot()));</span>
+	}
+
+	public SplitCalculator.GeTaxSettings getGeTaxSettingsFor(SettlementConfigSnapshot snapshot)
+	{
+<span class="fc" id="L2077">		return buildGeTaxSettings(snapshot);</span>
+	}
+
+	public SettlementConfigSnapshot getSettlementConfigSnapshotFor(Session session)
+	{
+<span class="fc" id="L2082">		SettlementConfigSnapshot historicalSnapshot = getHistoricalSettlementConfigSnapshot(session);</span>
+<span class="fc bfc" id="L2083" title="All 2 branches covered.">		return historicalSnapshot == null ? currentSettlementConfigSnapshot() : historicalSnapshot;</span>
+	}
+
+	public boolean updateSettlementConfigSnapshotFor(Session session, SettlementConfigSnapshot snapshot)
+	{
+<span class="fc bfc" id="L2088" title="All 4 branches covered.">		if (session == null || snapshot == null)</span>
+		{
+<span class="fc" id="L2090">			return false;</span>
+		}
+<span class="fc" id="L2092">		Session mother = sessions.get(getRootSessionId(session));</span>
+<span class="fc bfc" id="L2093" title="All 4 branches covered.">		if (mother == null || mother.isActive())</span>
+		{
+<span class="fc" id="L2095">			return false;</span>
+		}
+<span class="fc bfc" id="L2097" title="All 2 branches covered.">		if (!prepareHistoryMutation())</span>
+		{
+<span class="fc" id="L2099">			return false;</span>
+		}
+<span class="fc" id="L2101">		mother.setSettlementConfigAtEnd(snapshot);</span>
+<span class="pc bpc" id="L2102" title="1 of 2 branches missed.">		if (mother.getSettlementConfigAtStart() == null)</span>
+		{
+<span class="nc" id="L2104">			mother.setSettlementConfigAtStart(snapshot);</span>
+		}
+<span class="fc" id="L2106">		saveAfterMutation();</span>
+<span class="fc" id="L2107">		return true;</span>
+	}
+
+	private SettlementConfigSnapshot getHistoricalSettlementConfigSnapshot(Session session)
+	{
+<span class="fc bfc" id="L2112" title="All 2 branches covered.">		if (session == null)</span>
+		{
+<span class="fc" id="L2114">			return null;</span>
+		}
+<span class="fc bfc" id="L2116" title="All 2 branches covered.">		if (session.isActive())</span>
+		{
+<span class="fc" id="L2118">			return null;</span>
+		}
+<span class="fc" id="L2120">		Session mother = sessions.get(getRootSessionId(session));</span>
+<span class="pc bpc" id="L2121" title="2 of 4 branches missed.">		if (mother == null || mother.isActive())</span>
+		{
+<span class="nc" id="L2123">			return null;</span>
+		}
+<span class="pc bpc" id="L2125" title="1 of 2 branches missed.">		if (mother.getSettlementConfigAtEnd() != null)</span>
+		{
+<span class="fc" id="L2127">			return mother.getSettlementConfigAtEnd();</span>
+		}
+<span class="nc" id="L2129">		return mother.getSettlementConfigAtStart();</span>
+	}
+
+	private SettlementConfigSnapshot currentSettlementConfigSnapshot()
+	{
+<span class="fc bfc" id="L2134" title="All 2 branches covered.">		if (config == null)</span>
+		{
+<span class="fc" id="L2136">			return new SettlementConfigSnapshot(false,</span>
+				PluginConfig.DEFAULT_GE_TAX_MINIMUM_VALUE,
+				PluginConfig.DEFAULT_GE_TAX_PERCENT,
+				PluginConfig.DEFAULT_GE_TAX_MAX_PER_LOOT_VALUE);
+		}
+<span class="fc" id="L2141">		return new SettlementConfigSnapshot(</span>
+<span class="fc" id="L2142">			config.accountForGeTax(),</span>
+<span class="fc" id="L2143">			defaultString(config.geTaxMinimumValue(), PluginConfig.DEFAULT_GE_TAX_MINIMUM_VALUE),</span>
+<span class="fc" id="L2144">			config.geTaxPercent(),</span>
+<span class="fc" id="L2145">			defaultString(config.geTaxMaxPerLoot(), PluginConfig.DEFAULT_GE_TAX_MAX_PER_LOOT_VALUE));</span>
+	}
+
+	private Map&lt;String, String&gt; currentAltMappingSnapshot()
+	{
+<span class="pc bpc" id="L2150" title="1 of 2 branches missed.">		Map&lt;String, String&gt; mapping = playerManager == null ? null : playerManager.getAltMainMapping();</span>
+<span class="pc bpc" id="L2151" title="1 of 2 branches missed.">		return mapping == null ? new LinkedHashMap&lt;&gt;() : new LinkedHashMap&lt;&gt;(mapping);</span>
+	}
+
+	private Map&lt;String, String&gt; getCurrentThreadAltMappingSnapshot()
+	{
+<span class="fc" id="L2156">		Session current = getCurrentSession().orElse(null);</span>
+<span class="pc bpc" id="L2157" title="1 of 2 branches missed.">		if (current == null)</span>
+		{
+<span class="nc" id="L2159">			return null;</span>
+		}
+<span class="fc" id="L2161">		Session mother = sessions.get(getRootSessionId(current));</span>
+<span class="pc bpc" id="L2162" title="1 of 2 branches missed.">		if (mother == null)</span>
+		{
+<span class="nc" id="L2164">			return null;</span>
+		}
+<span class="fc" id="L2166">		Map&lt;String, String&gt; endSnapshot = mother.getAltMappingAtEnd();</span>
+<span class="fc bfc" id="L2167" title="All 2 branches covered.">		if (endSnapshot != null)</span>
+		{
+<span class="fc" id="L2169">			return endSnapshot;</span>
+		}
+<span class="fc" id="L2171">		return mother.getAltMappingAtStart();</span>
+	}
+
+	private String defaultString(String value, String defaultValue)
+	{
+<span class="pc bpc" id="L2176" title="1 of 4 branches missed.">		return value == null || value.trim().isEmpty() ? defaultValue : value;</span>
+	}
+
+	private long parseGeTaxMinimumValue(String configuredValue)
+	{
+<span class="pc bpc" id="L2181" title="1 of 4 branches missed.">		String valueToParse = configuredValue == null || configuredValue.trim().isEmpty()</span>
+<span class="fc" id="L2182">			? PluginConfig.DEFAULT_GE_TAX_MINIMUM_VALUE</span>
+<span class="fc" id="L2183">			: configuredValue.trim();</span>
+		try
+		{
+<span class="fc" id="L2186">			return Formats.OsrsAmountFormatter.stringAmountToLongAmount(valueToParse, null);</span>
+		}
+<span class="fc" id="L2188">		catch (ParseException e)</span>
+		{
+<span class="fc" id="L2190">			log.warn(&quot;Failed to parse GE tax minimum value {}; using default {}&quot;, valueToParse, PluginConfig.DEFAULT_GE_TAX_MINIMUM_VALUE, e);</span>
+<span class="fc" id="L2191">			return defaultGeTaxMinimumValue();</span>
+		}
+	}
+
+	private long defaultGeTaxMinimumValue()
+	{
+		try
+		{
+<span class="fc" id="L2199">			return Formats.OsrsAmountFormatter.stringAmountToLongAmount(PluginConfig.DEFAULT_GE_TAX_MINIMUM_VALUE, null);</span>
+		}
+<span class="nc" id="L2201">		catch (ParseException e)</span>
+		{
+<span class="nc" id="L2203">			log.warn(&quot;Failed to parse built-in GE tax minimum {}; disabling GE tax threshold&quot;, PluginConfig.DEFAULT_GE_TAX_MINIMUM_VALUE, e);</span>
+<span class="nc" id="L2204">			return 0L;</span>
+		}
+	}
+
+	private long parseGeTaxMaxPerLoot(String configuredValue)
+	{
+<span class="pc bpc" id="L2210" title="1 of 4 branches missed.">		String valueToParse = configuredValue == null || configuredValue.trim().isEmpty()</span>
+<span class="fc" id="L2211">			? PluginConfig.DEFAULT_GE_TAX_MAX_PER_LOOT_VALUE</span>
+<span class="fc" id="L2212">			: configuredValue.trim();</span>
+		try
+		{
+<span class="fc" id="L2215">			return Formats.OsrsAmountFormatter.stringAmountToLongAmount(valueToParse, null);</span>
+		}
+<span class="fc" id="L2217">		catch (ParseException e)</span>
+		{
+<span class="fc" id="L2219">			log.warn(&quot;Failed to parse GE tax max per loot {}; using default {}&quot;, valueToParse, PluginConfig.DEFAULT_GE_TAX_MAX_PER_LOOT_VALUE, e);</span>
+<span class="fc" id="L2220">			return defaultGeTaxMaxPerLoot();</span>
+		}
+	}
+
+	private long defaultGeTaxMaxPerLoot()
+	{
+		try
+		{
+<span class="fc" id="L2228">			return Formats.OsrsAmountFormatter.stringAmountToLongAmount(PluginConfig.DEFAULT_GE_TAX_MAX_PER_LOOT_VALUE, null);</span>
+		}
+<span class="nc" id="L2230">		catch (ParseException e)</span>
+		{
+<span class="nc" id="L2232">			log.warn(&quot;Failed to parse built-in GE tax max per loot {}; using default {}&quot;, PluginConfig.DEFAULT_GE_TAX_MAX_PER_LOOT_VALUE, PluginConfig.DEFAULT_GE_TAX_MAX_PER_LOOT, e);</span>
+<span class="nc" id="L2233">			return PluginConfig.DEFAULT_GE_TAX_MAX_PER_LOOT;</span>
+		}
+	}
+
+	private double sanitizeGeTaxPercent(double configuredPercent)
+	{
+<span class="pc bpc" id="L2239" title="1 of 6 branches missed.">		if (Double.isNaN(configuredPercent) || Double.isInfinite(configuredPercent) || configuredPercent &lt; 0.0d)</span>
+		{
+<span class="fc" id="L2241">			log.warn(&quot;Invalid GE tax percent {}; using default {}&quot;, configuredPercent, PluginConfig.DEFAULT_GE_TAX_PERCENT);</span>
+<span class="fc" id="L2242">			return PluginConfig.DEFAULT_GE_TAX_PERCENT;</span>
+		}
+<span class="fc" id="L2244">		return configuredPercent;</span>
+	}
+
+	private List&lt;Session&gt; getThreadSessions(Session s)
+	{
+<span class="fc bfc" id="L2249" title="All 2 branches covered.">		String rootId = (s.getMotherId() == null) ? s.getId() : s.getMotherId();</span>
+<span class="fc" id="L2250">		List&lt;Session&gt; thread = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L2251">		Session mother = sessions.get(rootId);</span>
+<span class="pc bpc" id="L2252" title="1 of 2 branches missed.">		if (mother != null)</span>
+		{
+<span class="fc" id="L2254">			thread.add(mother);</span>
+		}
+<span class="fc bfc" id="L2256" title="All 2 branches covered.">		for (Session candidate : sessions.values())</span>
+		{
+<span class="fc bfc" id="L2258" title="All 2 branches covered.">			if (rootId.equals(candidate.getMotherId()))</span>
+			{
+<span class="fc" id="L2260">				thread.add(candidate);</span>
+			}
+<span class="fc" id="L2262">		}</span>
+<span class="fc" id="L2263">		return thread;</span>
+	}
+
+
+	/**
+	 * Get all events from all sessions that share the same mother session as the current session.
+	 * Uses a cached list per mother to avoid recomputing on every UI update.
+	 *
+	 * @return a list containing all event records from sessions with the same mother
+	 */
+	public List&lt;SplitEvent&gt; getAllEvents()
+	{
+<span class="fc" id="L2275">		Session curr = getCurrentSession().orElse(null);</span>
+<span class="fc bfc" id="L2276" title="All 2 branches covered.">		if (curr == null)</span>
+		{
+<span class="fc" id="L2278">			return new ArrayList&lt;&gt;();</span>
+		}
+		// Determine the mother id for this thread
+<span class="fc bfc" id="L2281" title="All 2 branches covered.">		String motherId = (curr.getMotherId() == null) ? curr.getId() : curr.getMotherId();</span>
+		// If cached, return it
+<span class="fc" id="L2283">		List&lt;SplitEvent&gt; cached = motherEventsCache.get(motherId);</span>
+<span class="fc bfc" id="L2284" title="All 2 branches covered.">		if (cached != null)</span>
+		{
+<span class="fc" id="L2286">			return Collections.unmodifiableList(cached);</span>
+		}
+		// Build once in persisted session/list order. The edit-history UI can reorder
+		// events, so sorting by timestamp here would discard those edits on refresh.
+<span class="fc" id="L2290">		List&lt;SplitEvent&gt; built = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L2291" title="All 2 branches covered.">		for (Session session : sessions.values())</span>
+		{
+<span class="pc bpc" id="L2293" title="1 of 4 branches missed.">			if (motherId.equals(session.getId()) || motherId.equals(session.getMotherId()))</span>
+			{
+<span class="fc" id="L2295">				built.addAll(session.getEvents());</span>
+			}
+<span class="fc" id="L2297">		}</span>
+<span class="fc" id="L2298">		motherEventsCache.put(motherId, built);</span>
+<span class="fc" id="L2299">		return Collections.unmodifiableList(built);</span>
+	}
+
+
+	/**
+	 * Generate a random unique id for sessions.
+	 */
+	private String newId()
+	{
+<span class="fc" id="L2308">		return UUID.randomUUID().toString();</span>
+	}
+
+	private static final class HistoryEditSnapshot
+	{
+		private final LinkedHashMap&lt;String, Session&gt; sessions;
+		private final String currentSessionId;
+		private final boolean historyLoaded;
+		private final boolean historyDirty;
+
+		private HistoryEditSnapshot(LinkedHashMap&lt;String, Session&gt; sessions,
+		                            String currentSessionId,
+		                            boolean historyLoaded,
+		                            boolean historyDirty)
+<span class="fc" id="L2322">		{</span>
+<span class="fc" id="L2323">			this.sessions = sessions;</span>
+<span class="fc" id="L2324">			this.currentSessionId = currentSessionId;</span>
+<span class="fc" id="L2325">			this.historyLoaded = historyLoaded;</span>
+<span class="fc" id="L2326">			this.historyDirty = historyDirty;</span>
+<span class="fc" id="L2327">		}</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

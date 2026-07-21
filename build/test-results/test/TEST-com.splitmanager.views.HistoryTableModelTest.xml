@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.splitmanager.views.HistoryTableModelTest" tests="2" skipped="0" failures="0" errors="0" timestamp="2026-07-21T12:19:09" hostname="Loulord" time="0.007">
+  <properties/>
+  <testcase name="displaysEditsAndLinksHistoryRowsWithoutDesktopUi" classname="com.splitmanager.views.HistoryTableModelTest" time="0.004"/>
+  <testcase name="coversFormattingLinkingLockingAndEditOutcomesWithStubbedSessionBoundary" classname="com.splitmanager.views.HistoryTableModelTest" time="0.003"/>
+  <system-out><![CDATA[2026-07-21 14:19:09 CEST [AWT-EventQueue-0] WARN  c.s.views.HistoryTableModel - Invalid history loot amount 'not-coins' at row 1
+java.text.ParseException: Invalid amount
+	at com.splitmanager.utils.Formats$OsrsAmountFormatter.stringToValue(Formats.java:230)
+	at com.splitmanager.utils.Formats$OsrsAmountFormatter.stringAmountToLongAmount(Formats.java:209)
+	at com.splitmanager.views.HistoryTableModel.setValueAt(HistoryTableModel.java:306)
+	at com.splitmanager.views.HistoryTableModelTest.lambda$displaysEditsAndLinksHistoryRowsWithoutDesktopUi$0(HistoryTableModelTest.java:83)
+	at java.desktop/java.awt.event.InvocationEvent.dispatch(InvocationEvent.java:308)
+	at java.desktop/java.awt.EventQueue.dispatchEventImpl(EventQueue.java:773)
+	at java.desktop/java.awt.EventQueue$4.run(EventQueue.java:720)
+	at java.desktop/java.awt.EventQueue$4.run(EventQueue.java:714)
+	at java.base/java.security.AccessController.doPrivileged(AccessController.java:400)
+	at java.base/java.security.ProtectionDomain$JavaSecurityAccessImpl.doIntersectionPrivilege(ProtectionDomain.java:87)
+	at java.desktop/java.awt.EventQueue.dispatchEvent(EventQueue.java:742)
+	at java.desktop/java.awt.EventDispatchThread.pumpOneEventForFilters(EventDispatchThread.java:203)
+	at java.desktop/java.awt.EventDispatchThread.pumpEventsForFilter(EventDispatchThread.java:124)
+	at java.desktop/java.awt.EventDispatchThread.pumpEventsForHierarchy(EventDispatchThread.java:113)
+	at java.desktop/java.awt.EventDispatchThread.pumpEvents(EventDispatchThread.java:109)
+	at java.desktop/java.awt.EventDispatchThread.pumpEvents(EventDispatchThread.java:101)
+	at java.desktop/java.awt.EventDispatchThread.run(EventDispatchThread.java:90)
+2026-07-21 14:19:09 CEST [AWT-EventQueue-0] WARN  c.s.views.HistoryTableModel - Invalid history loot amount 'null' at row 4
+java.text.ParseException: Invalid amount
+	at com.splitmanager.utils.Formats$OsrsAmountFormatter.stringAmountToLongAmount(Formats.java:212)
+	at com.splitmanager.views.HistoryTableModel.setValueAt(HistoryTableModel.java:306)
+	at com.splitmanager.views.HistoryTableModelTest.lambda$coversFormattingLinkingLockingAndEditOutcomesWithStubbedSessionBoundary$1(HistoryTableModelTest.java:167)
+	at java.desktop/java.awt.event.InvocationEvent.dispatch(InvocationEvent.java:308)
+	at java.desktop/java.awt.EventQueue.dispatchEventImpl(EventQueue.java:773)
+	at java.desktop/java.awt.EventQueue$4.run(EventQueue.java:720)
+	at java.desktop/java.awt.EventQueue$4.run(EventQueue.java:714)
+	at java.base/java.security.AccessController.doPrivileged(AccessController.java:400)
+	at java.base/java.security.ProtectionDomain$JavaSecurityAccessImpl.doIntersectionPrivilege(ProtectionDomain.java:87)
+	at java.desktop/java.awt.EventQueue.dispatchEvent(EventQueue.java:742)
+	at java.desktop/java.awt.EventDispatchThread.pumpOneEventForFilters(EventDispatchThread.java:203)
+	at java.desktop/java.awt.EventDispatchThread.pumpEventsForFilter(EventDispatchThread.java:124)
+	at java.desktop/java.awt.EventDispatchThread.pumpEventsForHierarchy(EventDispatchThread.java:113)
+	at java.desktop/java.awt.EventDispatchThread.pumpEvents(EventDispatchThread.java:109)
+	at java.desktop/java.awt.EventDispatchThread.pumpEvents(EventDispatchThread.java:101)
+	at java.desktop/java.awt.EventDispatchThread.run(EventDispatchThread.java:90)
+]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

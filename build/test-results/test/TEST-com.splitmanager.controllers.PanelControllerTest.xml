@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.splitmanager.controllers.PanelControllerTest" tests="7" skipped="0" failures="0" errors="0" timestamp="2026-07-21T12:19:08" hostname="Loulord" time="0.256">
+  <properties/>
+  <testcase name="drivesSessionStateAndUsesStubbedDesktopInteractions" classname="com.splitmanager.controllers.PanelControllerTest" time="0.033"/>
+  <testcase name="managesKnownPlayersAndAltRelationships" classname="com.splitmanager.controllers.PanelControllerTest" time="0.044"/>
+  <testcase name="importsHistoryThroughTheClipboardSeam" classname="com.splitmanager.controllers.PanelControllerTest" time="0.019"/>
+  <testcase name="appliesAndDeletesDetectedValues" classname="com.splitmanager.controllers.PanelControllerTest" time="0.039"/>
+  <testcase name="appliesSavesAndDiscardsHistoricalSettlementContext" classname="com.splitmanager.controllers.PanelControllerTest" time="0.039"/>
+  <testcase name="refreshesMetricsCopiesOutputAndDelegatesWindowAndTourActions" classname="com.splitmanager.controllers.PanelControllerTest" time="0.034"/>
+  <testcase name="loadsClosesAndExportsHistory" classname="com.splitmanager.controllers.PanelControllerTest" time="0.048"/>
+  <system-out><![CDATA[2026-07-21 14:19:09 CEST [AWT-EventQueue-0] WARN  com.splitmanager.ManagerSession - Failed to import history sessions from JSON
+com.google.gson.JsonSyntaxException: java.lang.IllegalStateException: Expected BEGIN_ARRAY but was STRING at line 1 column 1 path $
+	at com.google.gson.Gson.fromJson(Gson.java:939)
+	at com.google.gson.Gson.fromJson(Gson.java:892)
+	at com.google.gson.Gson.fromJson(Gson.java:841)
+	at com.google.gson.Gson.fromJson(Gson.java:813)
+	at com.splitmanager.ManagerSession.importHistorySessionsJson(ManagerSession.java:1076)
+	at com.splitmanager.controllers.PanelController.importHistoryFromClipboard(PanelController.java:453)
+	at com.splitmanager.controllers.PanelControllerTest.lambda$importsHistoryThroughTheClipboardSeam$7(PanelControllerTest.java:232)
+	at java.desktop/java.awt.event.InvocationEvent.dispatch(InvocationEvent.java:308)
+	at java.desktop/java.awt.EventQueue.dispatchEventImpl(EventQueue.java:773)
+	at java.desktop/java.awt.EventQueue$4.run(EventQueue.java:720)
+	at java.desktop/java.awt.EventQueue$4.run(EventQueue.java:714)
+	at java.base/java.security.AccessController.doPrivileged(AccessController.java:400)
+	at java.base/java.security.ProtectionDomain$JavaSecurityAccessImpl.doIntersectionPrivilege(ProtectionDomain.java:87)
+	at java.desktop/java.awt.EventQueue.dispatchEvent(EventQueue.java:742)
+	at java.desktop/java.awt.EventDispatchThread.pumpOneEventForFilters(EventDispatchThread.java:203)
+	at java.desktop/java.awt.EventDispatchThread.pumpEventsForFilter(EventDispatchThread.java:124)
+	at java.desktop/java.awt.EventDispatchThread.pumpEventsForHierarchy(EventDispatchThread.java:113)
+	at java.desktop/java.awt.EventDispatchThread.pumpEvents(EventDispatchThread.java:109)
+	at java.desktop/java.awt.EventDispatchThread.pumpEvents(EventDispatchThread.java:101)
+	at java.desktop/java.awt.EventDispatchThread.run(EventDispatchThread.java:90)
+Caused by: java.lang.IllegalStateException: Expected BEGIN_ARRAY but was STRING at line 1 column 1 path $
+	at com.google.gson.stream.JsonReader.beginArray(JsonReader.java:350)
+	at com.google.gson.internal.bind.ArrayTypeAdapter.read(ArrayTypeAdapter.java:70)
+	at com.google.gson.Gson.fromJson(Gson.java:927)
+	... 19 common frames omitted
+]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
