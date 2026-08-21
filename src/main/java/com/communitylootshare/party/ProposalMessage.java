@@ -15,7 +15,7 @@ import java.util.List;
 import java.util.Optional;
 import net.runelite.client.party.messages.PartyMemberMessage;
 
-public class CommunityLootshareProposalMessage extends PartyMemberMessage
+public class ProposalMessage extends PartyMemberMessage
 {
 	public static final int PROTOCOL_VERSION = 2;
 
@@ -28,16 +28,16 @@ public class CommunityLootshareProposalMessage extends PartyMemberMessage
 	private long capturedAtEpochMilli;
 	private List<ItemPayload> items = new ArrayList<>();
 
-	public CommunityLootshareProposalMessage()
+	public ProposalMessage()
 	{
 	}
 
-	public CommunityLootshareProposalMessage(LootProposal proposal)
+	public ProposalMessage(LootProposal proposal)
 	{
 		this(proposal, false);
 	}
 
-	public CommunityLootshareProposalMessage(LootProposal proposal, boolean manualGp)
+	public ProposalMessage(LootProposal proposal, boolean manualGp)
 	{
 		if (proposal == null)
 		{

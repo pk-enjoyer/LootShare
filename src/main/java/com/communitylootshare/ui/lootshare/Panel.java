@@ -8,9 +8,9 @@ package com.communitylootshare.ui.lootshare;
 import com.communitylootshare.domain.LootshareSettings;
 import com.communitylootshare.domain.MemberApprovalStatus;
 import com.communitylootshare.ui.UiInteractionGateway;
-import com.communitylootshare.ui.lootshare.CommunityLootsharePanelState.HostedSettings;
-import com.communitylootshare.ui.lootshare.CommunityLootsharePanelState.LootItem;
-import com.communitylootshare.ui.lootshare.CommunityLootsharePanelState.MemberLoot;
+import com.communitylootshare.ui.lootshare.PanelState.HostedSettings;
+import com.communitylootshare.ui.lootshare.PanelState.LootItem;
+import com.communitylootshare.ui.lootshare.PanelState.MemberLoot;
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Component;
@@ -58,13 +58,13 @@ import net.runelite.client.util.QuantityFormatter;
  * Community Lootshare sidebar with Party controls and collapsible per-member loot grids.
  */
 @Slf4j
-public class CommunityLootsharePanel extends PluginPanel
+public class Panel extends PluginPanel
 {
 	private static final int ITEMS_PER_ROW = 5;
 	private static final int ITEM_SLOT_SIZE = 36;
 	private static final Color DISCONNECTED_COLOR = new Color(122, 122, 122);
 
-	private final CommunityLootsharePanelActions actions;
+	private final PanelActions actions;
 	private final UiInteractionGateway interactions;
 	private final ItemManager itemManager;
 	private final JPanel connectionPanel = new JPanel(new GridBagLayout());
@@ -72,7 +72,7 @@ public class CommunityLootsharePanel extends PluginPanel
 	private final JPanel hostedSettingsBody = new JPanel();
 	private final JPanel memberList = new JPanel();
 	private final JPanel settlementSection = sectionPanel();
-	private final CommunityLootshareSettlementView settlementView = new CommunityLootshareSettlementView();
+	private final SettlementView settlementView = new SettlementView();
 	private final JLabel connectionStatus = new JLabel();
 	private final JLabel memberHeaderLabel = new JLabel("Party members");
 	private final JButton primaryButton = new JButton();
@@ -84,7 +84,7 @@ public class CommunityLootsharePanel extends PluginPanel
 	private final JButton settlementGraphsButton = new JButton("Graphs ↗");
 	private final Set<Long> expandedMembers = new HashSet<>();
 	private final Map<Long, MemberCard> memberCards = new HashMap<>();
-	private final CommunityLootshareDebugPanel debugPanel;
+	private final DebugPanel debugPanel;
 
 	private boolean inParty;
 	private boolean debugSimulation;
@@ -96,13 +96,13 @@ public class CommunityLootsharePanel extends PluginPanel
 	private String settlementSessionId;
 	private String partyPassphrase;
 
-	public CommunityLootsharePanel(CommunityLootsharePanelActions actions, UiInteractionGateway interactions,
+	public Panel(PanelActions actions, UiInteractionGateway interactions,
 	                               ItemManager itemManager)
 	{
 		this.actions = actions;
 		this.interactions = interactions;
 		this.itemManager = itemManager;
-		this.debugPanel = new CommunityLootshareDebugPanel(actions);
+		this.debugPanel = new DebugPanel(actions);
 
 		setBorder(new EmptyBorder(10, 10, 10, 10));
 		setBackground(ColorScheme.DARK_GRAY_COLOR);
@@ -219,7 +219,7 @@ public class CommunityLootsharePanel extends PluginPanel
 		return quantity > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) quantity;
 	}
 
-	public void render(CommunityLootsharePanelState state)
+	public void render(PanelState state)
 	{
 		if (!SwingUtilities.isEventDispatchThread())
 		{
@@ -351,7 +351,7 @@ public class CommunityLootsharePanel extends PluginPanel
 		return settlementSection;
 	}
 
-	private void renderConnection(CommunityLootsharePanelState state)
+	private void renderConnection(PanelState state)
 	{
 		primaryButton.setText(debugSimulation ? "Exit debug" : inParty ? "Leave" : "Create party");
 		secondaryButton.setVisible(!inParty);
@@ -461,7 +461,7 @@ public class CommunityLootsharePanel extends PluginPanel
 		expandedMembers.retainAll(currentMemberIds);
 	}
 
-	private void renderSettlement(CommunityLootsharePanelState state)
+	private void renderSettlement(PanelState state)
 	{
 		settlementSection.setVisible(inParty);
 		if (!inParty)
@@ -588,7 +588,7 @@ public class CommunityLootsharePanel extends PluginPanel
 		return settlementGraphsButton;
 	}
 
-	CommunityLootshareSettlementView getSettlementView()
+	SettlementView getSettlementView()
 	{
 		return settlementView;
 	}
@@ -598,7 +598,7 @@ public class CommunityLootsharePanel extends PluginPanel
 		return memberCards.get(memberId);
 	}
 
-	CommunityLootshareDebugPanel getDebugPanel()
+	DebugPanel getDebugPanel()
 	{
 		return debugPanel;
 	}
@@ -633,7 +633,7 @@ public class CommunityLootsharePanel extends PluginPanel
 				{
 					if (SwingUtilities.isLeftMouseButton(event))
 					{
-						CommunityLootsharePanel.this.setExpanded(memberId, !lootContainer.isVisible());
+						Panel.this.setExpanded(memberId, !lootContainer.isVisible());
 					}
 				}
 			};
@@ -712,7 +712,7 @@ public class CommunityLootsharePanel extends PluginPanel
 		private void requestHostTransfer(MemberLoot member)
 		{
 			String memberName = member.getDisplayName();
-			if (interactions.confirm(CommunityLootsharePanel.this, "Transfer host?",
+			if (interactions.confirm(Panel.this, "Transfer host?",
 				"Transfer host to " + memberName + "?"))
 			{
 				actions.transferHost(member.getMemberId());
@@ -805,14 +805,14 @@ public class CommunityLootsharePanel extends PluginPanel
 
 		private void requestManualGp(MemberLoot member)
 		{
-			String input = interactions.prompt(CommunityLootsharePanel.this, "Add manual GP",
+			String input = interactions.prompt(Panel.this, "Add manual GP",
 				"GP received by " + member.getDisplayName() + ":");
 			Long amount = parseManualGp(input);
 			if (amount == null)
 			{
 				if (input != null)
 				{
-					interactions.showMessage(CommunityLootsharePanel.this,
+					interactions.showMessage(Panel.this,
 						"Enter a positive GP amount (for example 1000000, 1m, or 1.5m).");
 				}
 				return;

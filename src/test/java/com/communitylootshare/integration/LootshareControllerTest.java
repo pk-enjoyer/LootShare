@@ -6,7 +6,7 @@
 package com.communitylootshare.integration;
 
 import com.google.gson.Gson;
-import com.communitylootshare.CommunityLootshareConfig;
+import com.communitylootshare.LootshareConfig;
 import com.communitylootshare.capture.LootCaptureService;
 import com.communitylootshare.domain.LootProposal;
 import com.communitylootshare.domain.LootProposalStatus;
@@ -17,12 +17,12 @@ import com.communitylootshare.domain.LootValueBasis;
 import com.communitylootshare.domain.MemberApprovalStatus;
 import com.communitylootshare.domain.SharedLootEvent;
 import com.communitylootshare.domain.SharedLootItem;
-import com.communitylootshare.party.CommunityLootshareDecisionMessage;
-import com.communitylootshare.party.CommunityLootshareHostMessage;
-import com.communitylootshare.party.CommunityLootshareProposalMessage;
-import com.communitylootshare.persistence.CommunityLootshareStorage;
-import com.communitylootshare.sessions.CommunityLootshareEngine;
-import com.communitylootshare.sessions.CommunityLootshareEngine.MutationResult;
+import com.communitylootshare.party.DecisionMessage;
+import com.communitylootshare.party.HostMessage;
+import com.communitylootshare.party.ProposalMessage;
+import com.communitylootshare.persistence.LootshareStorage;
+import com.communitylootshare.sessions.LootshareEngine;
+import com.communitylootshare.sessions.LootshareEngine.MutationResult;
 import com.communitylootshare.sessions.LootshareCalculator;
 import java.io.File;
 import java.time.Instant;
@@ -62,7 +62,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-public class CommunityLootshareControllerTest
+public class LootshareControllerTest
 {
 	private static final long PARTY_ID = 77L;
 
@@ -71,11 +71,11 @@ public class CommunityLootshareControllerTest
 
 	private Client client;
 	private PartyService partyService;
-	private CommunityLootshareConfig config;
+	private LootshareConfig config;
 	private LootCaptureService captureService;
-	private CommunityLootshareEngine engine;
-	private CommunityLootshareStorage storage;
-	private CommunityLootshareController controller;
+	private LootshareEngine engine;
+	private LootshareStorage storage;
+	private LootshareController controller;
 	private PartyMember localMember;
 	private PartyMember remoteMember;
 	private File storageFile;
@@ -86,7 +86,7 @@ public class CommunityLootshareControllerTest
 		client = mock(Client.class);
 		ClientThread clientThread = mock(ClientThread.class);
 		partyService = mock(PartyService.class);
-		config = mock(CommunityLootshareConfig.class);
+		config = mock(LootshareConfig.class);
 		when(config.minimumSharedLootValue()).thenReturn(100);
 		when(config.lootValueBasis()).thenReturn(LootValueBasis.GRAND_EXCHANGE);
 		when(config.captureNpcLoot()).thenReturn(true);
@@ -97,9 +97,9 @@ public class CommunityLootshareControllerTest
 		when(config.includeLoggedOutMembers()).thenReturn(false);
 		ScheduledExecutorService executor = mock(ScheduledExecutorService.class);
 		captureService = mock(LootCaptureService.class);
-		engine = new CommunityLootshareEngine();
+		engine = new LootshareEngine();
 		storageFile = new File(temporaryFolder.getRoot(), "history/community-lootshare.json");
-		storage = new CommunityLootshareStorage(storageFile, new Gson());
+		storage = new LootshareStorage(storageFile, new Gson());
 
 		doAnswer(invocation -> {
 			((Runnable) invocation.getArgument(0)).run();
@@ -124,7 +124,7 @@ public class CommunityLootshareControllerTest
 		when(client.getLocalPlayer()).thenReturn(player);
 		when(client.getTickCount()).thenReturn(42);
 
-		controller = new CommunityLootshareController(client, clientThread, partyService, config, executor,
+		controller = new LootshareController(client, clientThread, partyService, config, executor,
 			captureService, engine, new LootshareCalculator(), storage);
 		controller.start();
 		assertTrue(controller.isReady());
@@ -151,8 +151,8 @@ public class CommunityLootshareControllerTest
 		assertEquals(MemberApprovalStatus.APPROVED,
 			controller.getMemberApprovalStatus(remoteMember.getMemberId()));
 		assertEquals(2, engine.getProposal("local").get().getParticipants().size());
-		verify(partyService).send(any(CommunityLootshareProposalMessage.class));
-		verify(partyService).send(any(CommunityLootshareDecisionMessage.class));
+		verify(partyService).send(any(ProposalMessage.class));
+		verify(partyService).send(any(DecisionMessage.class));
 		assertEquals(MutationResult.DUPLICATE, controller.approveProposal("local"));
 
 		LootshareCalculation calculation = controller.getActiveCalculation();
@@ -161,7 +161,7 @@ public class CommunityLootshareControllerTest
 		assertEquals(1, calculation.getTransfers().size());
 		assertEquals(100L, calculation.getTransfers().get(0).getAmount());
 
-		CommunityLootshareEngine restored = new CommunityLootshareEngine();
+		LootshareEngine restored = new LootshareEngine();
 		restored.restore(storage.load(storageFile).getState());
 		assertEquals(LootProposalStatus.ACCEPTED, restored.getProposal("local").get().getStatus());
 		assertEquals(1, restored.getActiveSession().get().getAcceptedProposals().size());
@@ -179,9 +179,9 @@ public class CommunityLootshareControllerTest
 		assertEquals("Manual GP", proposal.getEvent().getSourceLabel());
 		assertEquals(1_000L, proposal.getEvent().getTotal());
 		verify(partyService).send(org.mockito.ArgumentMatchers.argThat(message ->
-			message instanceof CommunityLootshareProposalMessage
-				&& ((CommunityLootshareProposalMessage) message).isManualGp()
-				&& ((CommunityLootshareProposalMessage) message).getOwnerMemberId() == remoteMember.getMemberId()));
+			message instanceof ProposalMessage
+				&& ((ProposalMessage) message).isManualGp()
+				&& ((ProposalMessage) message).getOwnerMemberId() == remoteMember.getMemberId()));
 	}
 
 	@Test
@@ -202,7 +202,7 @@ public class CommunityLootshareControllerTest
 		assertTrue(engine.getProposal("server-npc").isPresent());
 		verify(captureService).capture(eq("Boss"), eq(stacks), eq("Alice"), any(Instant.class), eq(42L),
 			eq(LootValueBasis.GRAND_EXCHANGE));
-		verify(partyService).send(any(CommunityLootshareProposalMessage.class));
+		verify(partyService).send(any(ProposalMessage.class));
 	}
 
 	@Test
@@ -237,7 +237,7 @@ public class CommunityLootshareControllerTest
 		controller.onLootReceived(received);
 
 		assertTrue(engine.getProposal("low-value").isPresent());
-		verify(partyService).send(any(CommunityLootshareProposalMessage.class));
+		verify(partyService).send(any(ProposalMessage.class));
 		assertEquals(MutationResult.DUPLICATE, controller.approveProposal("low-value"));
 		assertEquals(0L, controller.getActiveCalculation().getTotalAcceptedValue());
 		assertEquals(1, engine.getActiveSession().get().getAcceptedProposals().size());
@@ -247,7 +247,7 @@ public class CommunityLootshareControllerTest
 
 		assertEquals(50L, controller.getActiveCalculation().getTotalAcceptedValue());
 		assertEquals(0L, engine.getActiveMinimumSharedLootValue());
-		verify(partyService).send(any(CommunityLootshareHostMessage.class));
+		verify(partyService).send(any(HostMessage.class));
 	}
 
 	@Test
@@ -258,16 +258,16 @@ public class CommunityLootshareControllerTest
 		assertEquals(MutationResult.INVALID, controller.transferHost(localMember.getMemberId()));
 		assertEquals(MutationResult.APPLIED, controller.transferHost(remoteMember.getMemberId()));
 		assertEquals(remoteMember.getMemberId(), controller.getActiveHostMemberId());
-		ArgumentCaptor<CommunityLootshareHostMessage> transferMessage =
-			ArgumentCaptor.forClass(CommunityLootshareHostMessage.class);
+		ArgumentCaptor<HostMessage> transferMessage =
+			ArgumentCaptor.forClass(HostMessage.class);
 		verify(partyService).send(transferMessage.capture());
 		transferMessage.getValue().setMemberId(localMember.getMemberId());
-		CommunityLootshareHostMessage.DecodedHostState transferred = transferMessage.getValue().decode().get();
+		HostMessage.DecodedHostState transferred = transferMessage.getValue().decode().get();
 		assertEquals(remoteMember.getMemberId(), transferred.getHostMemberId());
 		assertEquals(MemberApprovalStatus.APPROVED,
 			transferred.getApprovalStatuses().get(remoteMember.getMemberId()));
 
-		CommunityLootshareHostMessage recipientSettings = new CommunityLootshareHostMessage(
+		HostMessage recipientSettings = new HostMessage(
 			remoteMember.getMemberId(), 500L, 3L);
 		recipientSettings.setMemberId(remoteMember.getMemberId());
 		controller.onHostMessage(recipientSettings);
@@ -285,13 +285,13 @@ public class CommunityLootshareControllerTest
 		Instant transition = engine.getActiveSession().get().getStartedAt().plusSeconds(1L);
 		assertEquals(MutationResult.APPLIED, engine.leaveParty(transition));
 		assertEquals(MutationResult.APPLIED, engine.enterParty(PARTY_ID, "fresh", transition));
-		CommunityLootshareHostMessage remoteClaim = new CommunityLootshareHostMessage(2L, 100L, 1L);
+		HostMessage remoteClaim = new HostMessage(2L, 100L, 1L);
 		remoteClaim.setMemberId(2L);
 
 		controller.onHostMessage(remoteClaim);
 
 		assertEquals(0L, controller.getActiveHostMemberId());
-		CommunityLootshareHostMessage firstClaim = new CommunityLootshareHostMessage(1L, 100L, 1L);
+		HostMessage firstClaim = new HostMessage(1L, 100L, 1L);
 		firstClaim.setMemberId(1L);
 		controller.onHostMessage(firstClaim);
 		assertEquals(1L, controller.getActiveHostMemberId());
@@ -318,7 +318,7 @@ public class CommunityLootshareControllerTest
 		assertEquals(MutationResult.APPLIED, controller.transferHost(remoteMember.getMemberId()));
 		LootshareSettings hostSettings = new LootshareSettings(250L, LootValueBasis.HIGH_ALCHEMY,
 			false, true, false, false, false, true);
-		CommunityLootshareHostMessage hostMessage = new CommunityLootshareHostMessage(
+		HostMessage hostMessage = new HostMessage(
 			remoteMember.getMemberId(), hostSettings, 3L);
 		hostMessage.setMemberId(remoteMember.getMemberId());
 		controller.onHostMessage(hostMessage);
@@ -380,7 +380,7 @@ public class CommunityLootshareControllerTest
 		assertTrue(!controller.getActiveHostSettings().isPresent());
 		LootshareSettings liveSettings = new LootshareSettings(450L, LootValueBasis.HIGH_ALCHEMY,
 			false, true, false, true, false, true);
-		CommunityLootshareHostMessage liveConfirmation = new CommunityLootshareHostMessage(
+		HostMessage liveConfirmation = new HostMessage(
 			remoteMember.getMemberId(), liveSettings, 2L);
 		liveConfirmation.setMemberId(remoteMember.getMemberId());
 		controller.onHostMessage(liveConfirmation);
@@ -427,7 +427,7 @@ public class CommunityLootshareControllerTest
 	@Test
 	public void hostEligibilityAutomaticallyDecidesFutureDropsWithoutRewritingAcceptedSplits()
 	{
-		CommunityLootshareProposalMessage pendingDrop = new CommunityLootshareProposalMessage(
+		ProposalMessage pendingDrop = new ProposalMessage(
 			LootProposal.pending(PARTY_ID, remoteMember.getMemberId(), event("pending-member", "Bob", 200L)));
 		pendingDrop.setMemberId(remoteMember.getMemberId());
 		controller.onProposalMessage(pendingDrop);
@@ -440,7 +440,7 @@ public class CommunityLootshareControllerTest
 			controller.setMemberApproved(remoteMember.getMemberId(), true));
 		assertEquals(LootProposalStatus.REJECTED,
 			engine.getProposal("before-toggle").get().getStatus());
-		CommunityLootshareProposalMessage approvedDrop = new CommunityLootshareProposalMessage(
+		ProposalMessage approvedDrop = new ProposalMessage(
 			LootProposal.pending(PARTY_ID, remoteMember.getMemberId(), event("approved-member", "Bob", 300L)));
 		approvedDrop.setMemberId(remoteMember.getMemberId());
 		controller.onProposalMessage(approvedDrop);
@@ -451,7 +451,7 @@ public class CommunityLootshareControllerTest
 
 		assertEquals(MutationResult.APPLIED,
 			controller.setMemberApproved(remoteMember.getMemberId(), false));
-		CommunityLootshareProposalMessage excludedDrop = new CommunityLootshareProposalMessage(
+		ProposalMessage excludedDrop = new ProposalMessage(
 			LootProposal.pending(PARTY_ID, remoteMember.getMemberId(), event("excluded-member", "Bob", 400L)));
 		excludedDrop.setMemberId(remoteMember.getMemberId());
 		controller.onProposalMessage(excludedDrop);
@@ -471,17 +471,17 @@ public class CommunityLootshareControllerTest
 
 		LootProposal accepted = remoteProposal.decide(LootProposalStatus.ACCEPTED, Instant.ofEpochSecond(2),
 			Arrays.asList(new LootshareParticipant(1L, "Alice"), new LootshareParticipant(2L, "Bob")));
-		CommunityLootshareDecisionMessage ownerDecision = new CommunityLootshareDecisionMessage(accepted);
+		DecisionMessage ownerDecision = new DecisionMessage(accepted);
 		ownerDecision.setMemberId(remoteMember.getMemberId());
 		controller.onDecisionMessage(ownerDecision);
 		assertEquals(LootProposalStatus.PENDING, engine.getProposal("remote").get().getStatus());
 
-		CommunityLootshareDecisionMessage hostDecision = new CommunityLootshareDecisionMessage(accepted);
+		DecisionMessage hostDecision = new DecisionMessage(accepted);
 		hostDecision.setMemberId(localMember.getMemberId());
 		controller.onDecisionMessage(hostDecision);
 		assertEquals(LootProposalStatus.ACCEPTED, engine.getProposal("remote").get().getStatus());
 
-		CommunityLootshareProposalMessage outsider = new CommunityLootshareProposalMessage(
+		ProposalMessage outsider = new ProposalMessage(
 			LootProposal.pending(PARTY_ID, 3L, event("outsider", "Mallory", 1L)));
 		outsider.setMemberId(3L);
 		controller.onProposalMessage(outsider);

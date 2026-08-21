@@ -9,13 +9,13 @@ import com.communitylootshare.domain.LootValueBasis;
 import com.communitylootshare.domain.LootshareSettings;
 import com.communitylootshare.domain.MemberApprovalStatus;
 import com.communitylootshare.testing.RecordingUiInteractions;
-import com.communitylootshare.ui.lootshare.CommunityLootsharePanelState.DebugState;
-import com.communitylootshare.ui.lootshare.CommunityLootsharePanelState.HostedSettings;
-import com.communitylootshare.ui.lootshare.CommunityLootsharePanelState.LootItem;
-import com.communitylootshare.ui.lootshare.CommunityLootsharePanelState.MemberLoot;
-import com.communitylootshare.ui.lootshare.CommunityLootsharePanelState.BalanceRow;
-import com.communitylootshare.ui.lootshare.CommunityLootsharePanelState.SettlementState;
-import com.communitylootshare.ui.lootshare.CommunityLootsharePanelState.TransferRow;
+import com.communitylootshare.ui.lootshare.PanelState.DebugState;
+import com.communitylootshare.ui.lootshare.PanelState.HostedSettings;
+import com.communitylootshare.ui.lootshare.PanelState.LootItem;
+import com.communitylootshare.ui.lootshare.PanelState.MemberLoot;
+import com.communitylootshare.ui.lootshare.PanelState.BalanceRow;
+import com.communitylootshare.ui.lootshare.PanelState.SettlementState;
+import com.communitylootshare.ui.lootshare.PanelState.TransferRow;
 import java.awt.Component;
 import java.awt.Container;
 import java.awt.event.MouseEvent;
@@ -39,11 +39,11 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-public class CommunityLootsharePanelTest
+public class PanelTest
 {
 	private RecordingActions actions;
 	private RecordingUiInteractions interactions;
-	private CommunityLootsharePanel panel;
+	private Panel panel;
 
 	@Before
 	public void setUp() throws Exception
@@ -55,8 +55,8 @@ public class CommunityLootsharePanelTest
 			BufferedImage.TYPE_INT_ARGB);
 		when(itemManager.getImage(anyInt(), anyInt(), anyBoolean())).thenReturn(itemImage);
 
-		AtomicReference<CommunityLootsharePanel> created = new AtomicReference<>();
-		SwingUtilities.invokeAndWait(() -> created.set(new CommunityLootsharePanel(actions, interactions, itemManager)));
+		AtomicReference<Panel> created = new AtomicReference<>();
+		SwingUtilities.invokeAndWait(() -> created.set(new Panel(actions, interactions, itemManager)));
 		panel = created.get();
 	}
 
@@ -64,7 +64,7 @@ public class CommunityLootsharePanelTest
 	public void rendersPartyControlsAndRoutesCreateJoinLeaveAndCopy() throws Exception
 	{
 		SwingUtilities.invokeAndWait(() -> {
-			panel.render(new CommunityLootsharePanelState(true, false, null, Collections.emptyList()));
+			panel.render(new PanelState(true, false, null, Collections.emptyList()));
 			assertEquals("Create party", panel.getPrimaryButton().getText());
 			assertTrue(panel.getSecondaryButton().isVisible());
 			assertTrue(panel.getPreviousPartyButton().isVisible());
@@ -75,7 +75,7 @@ public class CommunityLootsharePanelTest
 		assertEquals(1, actions.createCount);
 
 		SwingUtilities.invokeAndWait(() -> {
-			panel.render(new CommunityLootsharePanelState(
+			panel.render(new PanelState(
 				true, false, null, Collections.emptyList(), true));
 			assertTrue(panel.getPreviousPartyButton().isEnabled());
 			panel.getPreviousPartyButton().doClick();
@@ -89,7 +89,7 @@ public class CommunityLootsharePanelTest
 		assertNotNull(interactions.getLastMessage());
 
 		SwingUtilities.invokeAndWait(() -> {
-			panel.render(new CommunityLootsharePanelState(true, true, "four-word-party-pass",
+			panel.render(new PanelState(true, true, "four-word-party-pass",
 				Collections.emptyList()));
 			assertEquals("Leave", panel.getPrimaryButton().getText());
 			assertFalse(panel.getSecondaryButton().isVisible());
@@ -115,12 +115,12 @@ public class CommunityLootsharePanelTest
 			Arrays.asList(
 				new LootItem(4151, "Abyssal whip", 1L, 1_200_000L),
 				new LootItem(995, "Coins", 50_000L, 50_000L)));
-		CommunityLootsharePanelState state = new CommunityLootsharePanelState(
+		PanelState state = new PanelState(
 			true, true, "party-pass", Collections.singletonList(member));
 
 		SwingUtilities.invokeAndWait(() -> {
 			panel.render(state);
-			CommunityLootsharePanel.MemberCard card = panel.getMemberCard(1L);
+			Panel.MemberCard card = panel.getMemberCard(1L);
 			assertNotNull(card);
 			assertFalse(card.isExpanded());
 			assertEquals(2, card.getLootItemCount());
@@ -138,7 +138,7 @@ public class CommunityLootsharePanelTest
 		LootshareSettings settings = new LootshareSettings(250_000L, LootValueBasis.HIGH_ALCHEMY,
 			true, false, true, false, true, true);
 		HostedSettings hostedSettings = HostedSettings.available(1L, "Alice", true, settings);
-		CommunityLootsharePanelState state = new CommunityLootsharePanelState(true, true, "party-pass",
+		PanelState state = new PanelState(true, true, "party-pass",
 			Collections.emptyList(), false, DebugState.unavailable(), hostedSettings);
 
 		SwingUtilities.invokeAndWait(() -> {
@@ -154,7 +154,7 @@ public class CommunityLootsharePanelTest
 			assertTrue(containsText(panel.getHostedSettingsBody(), "Excluded"));
 			assertTrue(containsText(panel.getHostedSettingsBody(), "Member manual GP"));
 
-			panel.render(new CommunityLootsharePanelState(true, false, null, Collections.emptyList()));
+			panel.render(new PanelState(true, false, null, Collections.emptyList()));
 			assertFalse(panel.getHostedSettingsSection().isVisible());
 		});
 	}
@@ -167,9 +167,9 @@ public class CommunityLootsharePanelTest
 			Collections.singletonList(new LootItem(4151, "Abyssal whip", 1L, 1_200_000L)));
 
 		SwingUtilities.invokeAndWait(() -> {
-			panel.render(new CommunityLootsharePanelState(
+			panel.render(new PanelState(
 				true, true, "party-pass", Collections.singletonList(member)));
-			CommunityLootsharePanel.MemberCard card = panel.getMemberCard(1L);
+			Panel.MemberCard card = panel.getMemberCard(1L);
 			assertFalse(card.isExpanded());
 
 			Component child = findNestedChild(card.getHeader());
@@ -188,7 +188,7 @@ public class CommunityLootsharePanelTest
 			0, 0, 0L, Collections.emptyList());
 
 		SwingUtilities.invokeAndWait(() -> {
-			panel.render(new CommunityLootsharePanelState(
+			panel.render(new PanelState(
 				true, true, "party-pass", Arrays.asList(host, target)));
 			assertNull(panel.getMemberCard(1L).getTransferHostItem());
 			assertNotNull(panel.getMemberCard(2L).getTransferHostItem());
@@ -213,9 +213,9 @@ public class CommunityLootsharePanelTest
 			0, 0, 0L, Collections.emptyList(), MemberApprovalStatus.PENDING);
 
 		SwingUtilities.invokeAndWait(() -> {
-			panel.render(new CommunityLootsharePanelState(
+			panel.render(new PanelState(
 				true, true, "party-pass", Arrays.asList(host, pending)));
-			CommunityLootsharePanel.MemberCard card = panel.getMemberCard(2L);
+			Panel.MemberCard card = panel.getMemberCard(2L);
 			assertEquals("Pending", card.getApprovalStatusLabel().getText());
 			assertEquals("Approve", card.getApprovalActionButton().getText());
 			card.getApprovalActionButton().doClick();
@@ -227,7 +227,7 @@ public class CommunityLootsharePanelTest
 		MemberLoot approved = new MemberLoot(2L, "Bob", false, false, true, null,
 			0, 0, 0L, Collections.emptyList(), MemberApprovalStatus.APPROVED);
 		SwingUtilities.invokeAndWait(() -> {
-			panel.render(new CommunityLootsharePanelState(
+			panel.render(new PanelState(
 				true, true, "party-pass", Arrays.asList(host, approved)));
 			assertEquals("Exclude", panel.getMemberCard(2L).getApprovalActionButton().getText());
 			panel.getMemberCard(2L).getApprovalActionButton().doClick();
@@ -243,7 +243,7 @@ public class CommunityLootsharePanelTest
 				new BalanceRow(1L, "Alice", 300L, 150L, -150L),
 				new BalanceRow(2L, "Bob", 0L, 150L, 150L)),
 			Collections.singletonList(new TransferRow("Alice", "Bob", 150L)), Collections.emptyMap());
-		CommunityLootsharePanelState state = new CommunityLootsharePanelState(true, true, "party-pass",
+		PanelState state = new PanelState(true, true, "party-pass",
 			Collections.emptyList(), false, DebugState.unavailable(), HostedSettings.waiting(),
 			"session-one", settlement);
 
@@ -257,7 +257,7 @@ public class CommunityLootsharePanelTest
 			panel.render(state);
 			assertFalse(panel.getSettlementView().isVisible());
 
-			panel.render(new CommunityLootsharePanelState(true, true, "party-pass",
+			panel.render(new PanelState(true, true, "party-pass",
 				Collections.emptyList(), false, DebugState.unavailable(), HostedSettings.waiting(),
 				"session-two", settlement));
 			assertTrue(panel.getSettlementView().isVisible());
@@ -269,11 +269,11 @@ public class CommunityLootsharePanelTest
 	public void showsLoadingAndEmptyMemberStates() throws Exception
 	{
 		SwingUtilities.invokeAndWait(() -> {
-			panel.render(new CommunityLootsharePanelState(false, false, null, Collections.emptyList()));
+			panel.render(new PanelState(false, false, null, Collections.emptyList()));
 			assertFalse(panel.getPrimaryButton().isEnabled());
 			assertEquals("Loading profile...", panel.getConnectionStatus().getText());
 
-			panel.render(new CommunityLootsharePanelState(true, true, null, Collections.emptyList()));
+			panel.render(new PanelState(true, true, null, Collections.emptyList()));
 			assertTrue(panel.getPrimaryButton().isEnabled());
 			assertEquals("Connected to RuneLite Party.", panel.getConnectionStatus().getText());
 		});
@@ -313,7 +313,7 @@ public class CommunityLootsharePanelTest
 		return false;
 	}
 
-	private static final class RecordingActions implements CommunityLootsharePanelActions
+	private static final class RecordingActions implements PanelActions
 	{
 		private int createCount;
 		private int joinPreviousCount;

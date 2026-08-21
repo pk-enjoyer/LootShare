@@ -9,11 +9,11 @@ import net.runelite.client.RuneLite;
 import net.runelite.client.externalplugins.ExternalPluginManager;
 
 /** Manual development-client launcher; this class is not an automated test. */
-public class CommunityLootsharePluginTest
+public class LootsharePluginTest
 {
 	public static void main(String[] args) throws Exception
 	{
-		ExternalPluginManager.loadBuiltin(CommunityLootsharePlugin.class);
+		ExternalPluginManager.loadBuiltin(LootsharePlugin.class);
 		RuneLite.main(args);
 	}
 }

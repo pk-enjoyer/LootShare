@@ -6,7 +6,7 @@
 package com.communitylootshare.persistence;
 
 import com.google.gson.Gson;
-import com.communitylootshare.domain.CommunityLootshareState;
+import com.communitylootshare.domain.LootshareState;
 import com.communitylootshare.domain.LootProposal;
 import com.communitylootshare.domain.LootProposalStatus;
 import com.communitylootshare.domain.LootshareParticipant;
@@ -15,7 +15,7 @@ import com.communitylootshare.domain.LootValueBasis;
 import com.communitylootshare.domain.MemberApprovalStatus;
 import com.communitylootshare.domain.SharedLootEvent;
 import com.communitylootshare.domain.SharedLootItem;
-import com.communitylootshare.sessions.CommunityLootshareEngine;
+import com.communitylootshare.sessions.LootshareEngine;
 import java.io.File;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -35,7 +35,7 @@ import net.runelite.client.config.ConfigProfile;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-public class CommunityLootshareStorageTest
+public class LootshareStorageTest
 {
 	@Rule
 	public TemporaryFolder temporaryFolder = new TemporaryFolder();
@@ -46,16 +46,16 @@ public class CommunityLootshareStorageTest
 	public void atomicallySavesAndLoadsProfileHistoryWithPriceSnapshots() throws Exception
 	{
 		File file = new File(temporaryFolder.getRoot(), "nested/history.json");
-		CommunityLootshareStorage storage = new CommunityLootshareStorage(file, gson);
-		CommunityLootshareEngine engine = acceptedEngine();
+		LootshareStorage storage = new LootshareStorage(file, gson);
+		LootshareEngine engine = acceptedEngine();
 
 		assertTrue(storage.save(file, engine.snapshot()));
 		assertTrue(file.isFile());
-		CommunityLootshareStorage.LoadResult loaded = storage.load(file);
+		LootshareStorage.LoadResult loaded = storage.load(file);
 		assertTrue(loaded.isWritable());
-		assertEquals(CommunityLootshareState.CURRENT_SCHEMA_VERSION, loaded.getState().getSchemaVersion());
+		assertEquals(LootshareState.CURRENT_SCHEMA_VERSION, loaded.getState().getSchemaVersion());
 
-		CommunityLootshareEngine restored = new CommunityLootshareEngine();
+		LootshareEngine restored = new LootshareEngine();
 		restored.restore(loaded.getState());
 		LootProposal proposal = restored.getProposal("p1").get();
 		assertEquals(LootProposalStatus.ACCEPTED, proposal.getStatus());
@@ -75,7 +75,7 @@ public class CommunityLootshareStorageTest
 	public void missingAndEmptyFilesLoadAsWritableEmptyState() throws Exception
 	{
 		File missing = new File(temporaryFolder.getRoot(), "missing.json");
-		CommunityLootshareStorage storage = new CommunityLootshareStorage(missing, gson);
+		LootshareStorage storage = new LootshareStorage(missing, gson);
 		assertTrue(storage.load(missing).isWritable());
 		assertTrue(storage.load(missing).getState().getSessions().isEmpty());
 
@@ -95,12 +95,12 @@ public class CommunityLootshareStorageTest
 	{
 		File malformed = temporaryFolder.newFile("malformed.json");
 		Files.write(malformed.toPath(), Collections.singletonList("{not json"), StandardCharsets.UTF_8);
-		CommunityLootshareStorage storage = new CommunityLootshareStorage(malformed, gson);
+		LootshareStorage storage = new LootshareStorage(malformed, gson);
 		assertFalse(storage.load(malformed).isWritable());
 
 		File future = temporaryFolder.newFile("future.json");
 		Files.write(future.toPath(), Collections.singletonList("{\"schemaVersion\":"
-			+ (CommunityLootshareState.CURRENT_SCHEMA_VERSION + 1) + "}"), StandardCharsets.UTF_8);
+			+ (LootshareState.CURRENT_SCHEMA_VERSION + 1) + "}"), StandardCharsets.UTF_8);
 		assertFalse(storage.load(future).isWritable());
 
 		File invalidSchema = temporaryFolder.newFile("invalid-schema.json");
@@ -125,10 +125,10 @@ public class CommunityLootshareStorageTest
 				+ "\"startedAt\":\"1970-01-01T00:00:00Z\",\"hostMemberId\":1,"
 				+ "\"minimumSharedLootValue\":123,\"hostRevision\":1,\"acceptedProposals\":[]}]}"),
 			StandardCharsets.UTF_8);
-		CommunityLootshareStorage storage = new CommunityLootshareStorage(file, gson);
+		LootshareStorage storage = new LootshareStorage(file, gson);
 
-		CommunityLootshareStorage.LoadResult loaded = storage.load(file);
-		CommunityLootshareEngine restored = new CommunityLootshareEngine();
+		LootshareStorage.LoadResult loaded = storage.load(file);
+		LootshareEngine restored = new LootshareEngine();
 		restored.restore(loaded.getState());
 
 		assertTrue(loaded.isWritable());
@@ -149,7 +149,7 @@ public class CommunityLootshareStorageTest
 		when(configManager.getProfile()).thenReturn(profile);
 		when(profile.getName()).thenReturn("../escaped/profile");
 		when(profile.getId()).thenReturn(42L);
-		CommunityLootshareStorage storage = new CommunityLootshareStorage(configManager, gson);
+		LootshareStorage storage = new LootshareStorage(configManager, gson);
 
 		Path pluginDirectory = new File(RuneLite.RUNELITE_DIR, "community-lootshare").toPath()
 			.toAbsolutePath().normalize();
@@ -166,10 +166,10 @@ public class CommunityLootshareStorageTest
 	public void nullAndUnwritableSaveTargetsFailWithoutThrowing() throws Exception
 	{
 		File file = new File(temporaryFolder.getRoot(), "history.json");
-		CommunityLootshareStorage storage = new CommunityLootshareStorage(file, gson);
-		assertFalse(storage.save(null, new CommunityLootshareState()));
+		LootshareStorage storage = new LootshareStorage(file, gson);
+		assertFalse(storage.save(null, new LootshareState()));
 		assertFalse(storage.save(file, null));
-		assertFalse(storage.save(temporaryFolder.newFolder("directory-target"), new CommunityLootshareState()));
+		assertFalse(storage.save(temporaryFolder.newFolder("directory-target"), new LootshareState()));
 	}
 
 	@Test
@@ -177,7 +177,7 @@ public class CommunityLootshareStorageTest
 	{
 		try
 		{
-			new CommunityLootshareStorage(new File("unused"), null);
+			new LootshareStorage(new File("unused"), null);
 			fail("Expected invalid Gson to be rejected");
 		}
 		catch (IllegalArgumentException expected)
@@ -186,9 +186,9 @@ public class CommunityLootshareStorageTest
 		}
 	}
 
-	private static CommunityLootshareEngine acceptedEngine()
+	private static LootshareEngine acceptedEngine()
 	{
-		CommunityLootshareEngine engine = new CommunityLootshareEngine();
+		LootshareEngine engine = new LootshareEngine();
 		engine.enterParty(10L, "session", Instant.EPOCH);
 		engine.updateHostState(1L, 1L, new LootshareSettings(100_000L, LootValueBasis.HIGH_ALCHEMY,
 			true, false, true, false, true, true), 1L);

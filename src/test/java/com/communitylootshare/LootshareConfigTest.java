@@ -11,16 +11,16 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import org.junit.Test;
 
-public class CommunityLootshareConfigTest
+public class LootshareConfigTest
 {
 	@Test
 	public void exposesSafeDefaultsForAHostedParty()
 	{
-		CommunityLootshareConfig config = new CommunityLootshareConfig()
+		LootshareConfig config = new LootshareConfig()
 		{
 		};
 
-		assertEquals(CommunityLootshareConfig.DEFAULT_MINIMUM_SHARED_LOOT_VALUE,
+		assertEquals(LootshareConfig.DEFAULT_MINIMUM_SHARED_LOOT_VALUE,
 			config.minimumSharedLootValue());
 		assertEquals(LootValueBasis.GRAND_EXCHANGE, config.lootValueBasis());
 		assertTrue(config.captureNpcLoot());

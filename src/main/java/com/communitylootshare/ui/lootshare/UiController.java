@@ -5,9 +5,9 @@
 
 package com.communitylootshare.ui.lootshare;
 
-import com.communitylootshare.debug.CommunityLootshareDebugSession;
-import com.communitylootshare.debug.CommunityLootshareDebugSession.LootPreset;
-import com.communitylootshare.debug.CommunityLootshareDebugSession.Snapshot;
+import com.communitylootshare.debug.DebugSession;
+import com.communitylootshare.debug.DebugSession.LootPreset;
+import com.communitylootshare.debug.DebugSession.Snapshot;
 import com.communitylootshare.domain.LootProposal;
 import com.communitylootshare.domain.LootProposalStatus;
 import com.communitylootshare.domain.LootshareCalculation;
@@ -16,18 +16,18 @@ import com.communitylootshare.domain.LootshareSession;
 import com.communitylootshare.domain.LootshareSettings;
 import com.communitylootshare.domain.MemberApprovalStatus;
 import com.communitylootshare.domain.SharedLootItem;
-import com.communitylootshare.integration.CommunityLootshareController;
+import com.communitylootshare.integration.LootshareController;
 import com.communitylootshare.ui.PopoutWindow;
 import com.communitylootshare.ui.PopoutWindowFactory;
 import com.communitylootshare.ui.SwingPopoutWindowFactory;
-import com.communitylootshare.ui.lootshare.CommunityLootsharePanelState.BalanceRow;
-import com.communitylootshare.ui.lootshare.CommunityLootsharePanelState.DebugState;
-import com.communitylootshare.ui.lootshare.CommunityLootsharePanelState.HostedSettings;
-import com.communitylootshare.ui.lootshare.CommunityLootsharePanelState.LootItem;
-import com.communitylootshare.ui.lootshare.CommunityLootsharePanelState.MemberLoot;
-import com.communitylootshare.ui.lootshare.CommunityLootsharePanelState.SettlementState;
-import com.communitylootshare.ui.lootshare.CommunityLootsharePanelState.TransferRow;
-import com.communitylootshare.views.graph.CommunityLootshareGraphData;
+import com.communitylootshare.ui.lootshare.PanelState.BalanceRow;
+import com.communitylootshare.ui.lootshare.PanelState.DebugState;
+import com.communitylootshare.ui.lootshare.PanelState.HostedSettings;
+import com.communitylootshare.ui.lootshare.PanelState.LootItem;
+import com.communitylootshare.ui.lootshare.PanelState.MemberLoot;
+import com.communitylootshare.ui.lootshare.PanelState.SettlementState;
+import com.communitylootshare.ui.lootshare.PanelState.TransferRow;
+import com.communitylootshare.views.graph.GraphData;
 import com.communitylootshare.views.graph.SessionGraphMode;
 import com.communitylootshare.views.graph.SessionGraphSnapshot;
 import java.awt.Dimension;
@@ -64,7 +64,7 @@ import net.runelite.client.util.Text;
  */
 @Singleton
 @Slf4j
-public class CommunityLootshareUiController implements CommunityLootsharePanelActions
+public class UiController implements PanelActions
 {
 	private static final String UNKNOWN_MEMBER_NAME = "<unknown>";
 
@@ -72,8 +72,8 @@ public class CommunityLootshareUiController implements CommunityLootsharePanelAc
 	private final ClientThread clientThread;
 	private final PartyService partyService;
 	private final ItemManager itemManager;
-	private final CommunityLootshareController lootshareController;
-	private final CommunityLootshareDebugSession debugSession;
+	private final LootshareController lootshareController;
+	private final DebugSession debugSession;
 	private final PartyConfig partyConfig;
 	private final PopoutWindowFactory popoutWindowFactory;
 	private final Object viewLock = new Object();
@@ -81,33 +81,33 @@ public class CommunityLootshareUiController implements CommunityLootsharePanelAc
 
 	private boolean started;
 	private long viewGeneration;
-	private CommunityLootsharePanel panel;
-	private CommunityLootsharePanelState latestState;
-	private CommunityLootshareSettlementDashboard settlementDashboard;
+	private Panel panel;
+	private PanelState latestState;
+	private SettlementDashboard settlementDashboard;
 	private PopoutWindow settlementWindow;
 
-	public CommunityLootshareUiController(Client client, ClientThread clientThread, PartyService partyService,
+	public UiController(Client client, ClientThread clientThread, PartyService partyService,
 	                                      ItemManager itemManager,
-	                                      CommunityLootshareController lootshareController)
+	                                      LootshareController lootshareController)
 	{
 		this(client, clientThread, partyService, itemManager, lootshareController, null,
 			(PartyConfig) null, null);
 	}
 
-	public CommunityLootshareUiController(Client client, ClientThread clientThread, PartyService partyService,
+	public UiController(Client client, ClientThread clientThread, PartyService partyService,
 	                                      ItemManager itemManager,
-	                                      CommunityLootshareController lootshareController,
-	                                      CommunityLootshareDebugSession debugSession)
+	                                      LootshareController lootshareController,
+	                                      DebugSession debugSession)
 	{
 		this(client, clientThread, partyService, itemManager, lootshareController, debugSession,
 			(PartyConfig) null, null);
 	}
 
 	@Inject
-	public CommunityLootshareUiController(Client client, ClientThread clientThread, PartyService partyService,
+	public UiController(Client client, ClientThread clientThread, PartyService partyService,
 	                                      ItemManager itemManager,
-	                                      CommunityLootshareController lootshareController,
-	                                      CommunityLootshareDebugSession debugSession,
+	                                      LootshareController lootshareController,
+	                                      DebugSession debugSession,
 	                                      ConfigManager configManager,
 	                                      SwingPopoutWindowFactory popoutWindowFactory)
 	{
@@ -115,20 +115,20 @@ public class CommunityLootshareUiController implements CommunityLootsharePanelAc
 			configManager.getConfig(PartyConfig.class), popoutWindowFactory);
 	}
 
-	CommunityLootshareUiController(Client client, ClientThread clientThread, PartyService partyService,
+	UiController(Client client, ClientThread clientThread, PartyService partyService,
 	                               ItemManager itemManager,
-	                               CommunityLootshareController lootshareController,
-	                               CommunityLootshareDebugSession debugSession,
+	                               LootshareController lootshareController,
+	                               DebugSession debugSession,
 	                               PartyConfig partyConfig)
 	{
 		this(client, clientThread, partyService, itemManager, lootshareController, debugSession,
 			partyConfig, null);
 	}
 
-	CommunityLootshareUiController(Client client, ClientThread clientThread, PartyService partyService,
+	UiController(Client client, ClientThread clientThread, PartyService partyService,
 	                               ItemManager itemManager,
-	                               CommunityLootshareController lootshareController,
-	                               CommunityLootshareDebugSession debugSession,
+	                               LootshareController lootshareController,
+	                               DebugSession debugSession,
 	                               PartyConfig partyConfig, PopoutWindowFactory popoutWindowFactory)
 	{
 		this.client = client;
@@ -201,7 +201,7 @@ public class CommunityLootshareUiController implements CommunityLootsharePanelAc
 		return left > Long.MAX_VALUE - right ? Long.MAX_VALUE : left + right;
 	}
 
-	public void start(CommunityLootsharePanel panel)
+	public void start(Panel panel)
 	{
 		synchronized (viewLock)
 		{
@@ -233,7 +233,7 @@ public class CommunityLootshareUiController implements CommunityLootsharePanelAc
 
 	public void refresh()
 	{
-		final CommunityLootsharePanel target;
+		final Panel target;
 		final long generation;
 		synchronized (viewLock)
 		{
@@ -253,7 +253,7 @@ public class CommunityLootshareUiController implements CommunityLootsharePanelAc
 					return;
 				}
 			}
-			CommunityLootsharePanelState state = buildState();
+			PanelState state = buildState();
 			SwingUtilities.invokeLater(() -> {
 				synchronized (viewLock)
 				{
@@ -394,8 +394,8 @@ public class CommunityLootshareUiController implements CommunityLootsharePanelAc
 			disposeSettlementDashboard();
 		}
 
-		CommunityLootshareSettlementDashboard dashboard =
-			new CommunityLootshareSettlementDashboard(this::refresh);
+		SettlementDashboard dashboard =
+			new SettlementDashboard(this::refresh);
 		if (latestState != null)
 		{
 			dashboard.render(latestState.getSettlement());
@@ -540,7 +540,7 @@ public class CommunityLootshareUiController implements CommunityLootsharePanelAc
 		refresh();
 	}
 
-	CommunityLootsharePanelState buildState()
+	PanelState buildState()
 	{
 		if (isDebugSimulationActive())
 		{
@@ -551,7 +551,7 @@ public class CommunityLootshareUiController implements CommunityLootsharePanelAc
 		boolean previousPartyAvailable = previousPartyPassphrase() != null;
 		if (!inParty)
 		{
-			return new CommunityLootsharePanelState(
+			return new PanelState(
 				ready, false, null, Collections.emptyList(), previousPartyAvailable, currentDebugState());
 		}
 
@@ -613,7 +613,7 @@ public class CommunityLootshareUiController implements CommunityLootsharePanelAc
 				}
 			}
 		}
-		return new CommunityLootsharePanelState(
+		return new PanelState(
 			ready, true, partyService.getPartyPassphrase(), members, previousPartyAvailable,
 			currentDebugState(), hostedSettings,
 			activeSession == null ? null : activeSession.getSessionId(),
@@ -669,7 +669,7 @@ public class CommunityLootshareUiController implements CommunityLootsharePanelAc
 			proposalCount, pendingProposalCount, totalValue, items, approvalStatus);
 	}
 
-	private CommunityLootsharePanelState buildDebugState(Snapshot snapshot)
+	private PanelState buildDebugState(Snapshot snapshot)
 	{
 		Map<LootPreset, Long> lootPresetPrices = resolveDebugLootPrices();
 		debugLootPrices = lootPresetPrices;
@@ -698,7 +698,7 @@ public class CommunityLootshareUiController implements CommunityLootsharePanelAc
 			int byName = String.CASE_INSENSITIVE_ORDER.compare(left.getDisplayName(), right.getDisplayName());
 			return byName != 0 ? byName : Long.compare(left.getMemberId(), right.getMemberId());
 		});
-		return new CommunityLootsharePanelState(true, true, null, members, false,
+		return new PanelState(true, true, null, members, false,
 			new DebugState(true, true, snapshot.getOwnerMemberId(), lootPresetPrices), HostedSettings.waiting(),
 			snapshot.getSession().getSessionId(),
 			buildSettlementState(snapshot.getSession(), snapshot.getCalculation()));
@@ -726,7 +726,7 @@ public class CommunityLootshareUiController implements CommunityLootsharePanelAc
 		Instant now = Instant.now();
 		for (SessionGraphMode mode : SessionGraphMode.values())
 		{
-			graphs.put(mode, CommunityLootshareGraphData.build(session, calculation, mode, now));
+			graphs.put(mode, GraphData.build(session, calculation, mode, now));
 		}
 		return new SettlementState(calculation.getTotalAcceptedValue(), balances, transfers, graphs);
 	}
@@ -803,7 +803,7 @@ public class CommunityLootshareUiController implements CommunityLootsharePanelAc
 			: DebugState.unavailable();
 	}
 
-	private void onSettlementDashboardClosed(CommunityLootshareSettlementDashboard dashboard)
+	private void onSettlementDashboardClosed(SettlementDashboard dashboard)
 	{
 		dashboard.stop();
 		if (settlementDashboard == dashboard)
@@ -815,7 +815,7 @@ public class CommunityLootshareUiController implements CommunityLootsharePanelAc
 
 	private void disposeSettlementDashboard()
 	{
-		CommunityLootshareSettlementDashboard dashboard = settlementDashboard;
+		SettlementDashboard dashboard = settlementDashboard;
 		PopoutWindow window = settlementWindow;
 		settlementDashboard = null;
 		settlementWindow = null;

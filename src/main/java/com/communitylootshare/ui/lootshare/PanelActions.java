@@ -5,12 +5,12 @@
 
 package com.communitylootshare.ui.lootshare;
 
-import com.communitylootshare.debug.CommunityLootshareDebugSession.LootPreset;
+import com.communitylootshare.debug.DebugSession.LootPreset;
 
 /**
  * User actions emitted by the Community Lootshare sidebar.
  */
-public interface CommunityLootsharePanelActions
+public interface PanelActions
 {
 	void createParty();
 

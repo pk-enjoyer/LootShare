@@ -5,7 +5,7 @@
 
 package com.communitylootshare.persistence;
 
-import com.communitylootshare.domain.CommunityLootshareState;
+import com.communitylootshare.domain.LootshareState;
 import com.communitylootshare.utils.InstantTypeAdapter;
 import com.google.gson.Gson;
 import com.google.gson.JsonParseException;
@@ -30,7 +30,7 @@ import net.runelite.client.config.ConfigProfile;
 
 @Singleton
 @Slf4j
-public class CommunityLootshareStorage
+public class LootshareStorage
 {
 	private static final String PLUGIN_DIRECTORY = "community-lootshare";
 	private static final String FILE_SUFFIX = ".community-lootshare.json";
@@ -41,14 +41,14 @@ public class CommunityLootshareStorage
 	private final Gson gson;
 
 	@Inject
-	public CommunityLootshareStorage(ConfigManager configManager, Gson gson)
+	public LootshareStorage(ConfigManager configManager, Gson gson)
 	{
 		this.configManager = configManager;
 		this.fixedFile = null;
 		this.gson = configuredGson(gson);
 	}
 
-	public CommunityLootshareStorage(File fixedFile, Gson gson)
+	public LootshareStorage(File fixedFile, Gson gson)
 	{
 		this.configManager = null;
 		this.fixedFile = fixedFile;
@@ -109,41 +109,41 @@ public class CommunityLootshareStorage
 		}
 		if (!file.exists())
 		{
-			return LoadResult.writable(new CommunityLootshareState());
+			return LoadResult.writable(new LootshareState());
 		}
 		if (!file.isFile() || file.length() > MAX_FILE_BYTES)
 		{
 			log.warn("Community Lootshare history is unavailable because its storage file is invalid or oversized");
-			return LoadResult.readOnly(new CommunityLootshareState());
+			return LoadResult.readOnly(new LootshareState());
 		}
 		if (file.length() == 0L)
 		{
-			return LoadResult.writable(new CommunityLootshareState());
+			return LoadResult.writable(new LootshareState());
 		}
 
 		try (FileReader reader = new FileReader(file, StandardCharsets.UTF_8))
 		{
-			CommunityLootshareState state = gson.fromJson(reader, CommunityLootshareState.class);
+			LootshareState state = gson.fromJson(reader, LootshareState.class);
 			if (state == null)
 			{
-				return LoadResult.writable(new CommunityLootshareState());
+				return LoadResult.writable(new LootshareState());
 			}
 			if (state.getSchemaVersion() <= 0
-				|| state.getSchemaVersion() > CommunityLootshareState.CURRENT_SCHEMA_VERSION)
+				|| state.getSchemaVersion() > LootshareState.CURRENT_SCHEMA_VERSION)
 			{
 				log.warn("Community Lootshare history uses unsupported schema {}", state.getSchemaVersion());
-				return LoadResult.readOnly(new CommunityLootshareState());
+				return LoadResult.readOnly(new LootshareState());
 			}
 			return LoadResult.writable(state);
 		}
 		catch (IOException | JsonParseException e)
 		{
 			log.warn("Failed to load Community Lootshare history; the existing file will not be overwritten", e);
-			return LoadResult.readOnly(new CommunityLootshareState());
+			return LoadResult.readOnly(new LootshareState());
 		}
 	}
 
-	public boolean save(@Nullable File file, CommunityLootshareState state)
+	public boolean save(@Nullable File file, LootshareState state)
 	{
 		if (file == null || state == null)
 		{
@@ -157,7 +157,7 @@ public class CommunityLootshareStorage
 			Files.createDirectories(parent.toPath());
 			String temporaryPrefix = file.getName().length() >= 3 ? file.getName() : "cls";
 			temporaryFile = File.createTempFile(temporaryPrefix, ".tmp", parent);
-			state.setSchemaVersion(CommunityLootshareState.CURRENT_SCHEMA_VERSION);
+			state.setSchemaVersion(LootshareState.CURRENT_SCHEMA_VERSION);
 			try (FileOutputStream output = new FileOutputStream(temporaryFile);
 			     FileChannel channel = output.getChannel();
 			     OutputStreamWriter writer = new OutputStreamWriter(output, StandardCharsets.UTF_8))
@@ -202,31 +202,31 @@ public class CommunityLootshareStorage
 
 	public static final class LoadResult
 	{
-		private final CommunityLootshareState state;
+		private final LootshareState state;
 		private final boolean writable;
 
-		private LoadResult(CommunityLootshareState state, boolean writable)
+		private LoadResult(LootshareState state, boolean writable)
 		{
 			this.state = state;
 			this.writable = writable;
 		}
 
-		private static LoadResult writable(CommunityLootshareState state)
+		private static LoadResult writable(LootshareState state)
 		{
 			return new LoadResult(state, true);
 		}
 
-		private static LoadResult readOnly(CommunityLootshareState state)
+		private static LoadResult readOnly(LootshareState state)
 		{
 			return new LoadResult(state, false);
 		}
 
 		private static LoadResult unavailable()
 		{
-			return readOnly(new CommunityLootshareState());
+			return readOnly(new LootshareState());
 		}
 
-		public CommunityLootshareState getState()
+		public LootshareState getState()
 		{
 			return state;
 		}

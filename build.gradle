@@ -37,7 +37,7 @@ sourceSets {
 }
 
 group = 'com.communitylootshare'
-version = '4.0.0'
+version = '4.0.0-beta.1'
 
 tasks.withType(JavaCompile).configureEach {
 	options.encoding = 'UTF-8'
@@ -49,7 +49,7 @@ jacoco {
 }
 
 def jacocoUnitTestExcludes = [
-	'com/communitylootshare/CommunityLootsharePlugin*',
+	'com/communitylootshare/LootsharePlugin*',
 	'com/communitylootshare/integration/**',
 	'com/communitylootshare/ui/**',
 	'com/communitylootshare/views/**'
@@ -131,7 +131,7 @@ tasks.register('run', JavaExec) {
 		tasks.named('patchedRuneliteClientJar'),
 		configurations.testRuntimeClasspath.filter { file -> !isRuneLiteClientJar(file) }
 	)
-	mainClass.set('com.communitylootshare.CommunityLootsharePluginTest')
+	mainClass.set('com.communitylootshare.LootsharePluginTest')
 	jvmArgs '-ea'
 	args '--developer-mode', '--debug'
 }
@@ -139,7 +139,7 @@ tasks.register('run', JavaExec) {
 tasks.register('shadowJar', Jar) {
 	dependsOn configurations.testRuntimeClasspath
 	manifest {
-		attributes('Main-Class': 'com.communitylootshare.CommunityLootsharePluginTest', 'Multi-Release': true)
+		attributes('Main-Class': 'com.communitylootshare.LootsharePluginTest', 'Multi-Release': true)
 	}
 
 	duplicatesStrategy = DuplicatesStrategy.EXCLUDE

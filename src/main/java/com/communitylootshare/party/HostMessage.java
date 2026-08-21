@@ -21,7 +21,7 @@ import net.runelite.client.party.messages.PartyMemberMessage;
 /**
  * Synchronizes Community Lootshare host authority and the complete host-owned policy.
  */
-public class CommunityLootshareHostMessage extends PartyMemberMessage
+public class HostMessage extends PartyMemberMessage
 {
 	public static final int PROTOCOL_VERSION = 4;
 
@@ -39,22 +39,22 @@ public class CommunityLootshareHostMessage extends PartyMemberMessage
 	private List<MemberApproval> memberApprovals;
 	private long revision;
 
-	public CommunityLootshareHostMessage()
+	public HostMessage()
 	{
 	}
 
-	public CommunityLootshareHostMessage(long hostMemberId, long minimumSharedLootValue, long revision)
+	public HostMessage(long hostMemberId, long minimumSharedLootValue, long revision)
 	{
 		this(hostMemberId, LootshareSettings.defaults(minimumSharedLootValue), revision);
 	}
 
-	public CommunityLootshareHostMessage(long hostMemberId, LootshareSettings settings, long revision)
+	public HostMessage(long hostMemberId, LootshareSettings settings, long revision)
 	{
 		this(hostMemberId, settings, revision,
 			Collections.singletonMap(hostMemberId, MemberApprovalStatus.APPROVED));
 	}
 
-	public CommunityLootshareHostMessage(long hostMemberId, LootshareSettings settings, long revision,
+	public HostMessage(long hostMemberId, LootshareSettings settings, long revision,
 	                                     Map<Long, MemberApprovalStatus> approvalStatuses)
 	{
 		if (hostMemberId <= 0L || settings == null || revision <= 0L || approvalStatuses == null

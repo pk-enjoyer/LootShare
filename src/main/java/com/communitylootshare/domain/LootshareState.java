@@ -8,7 +8,7 @@ package com.communitylootshare.domain;
 import java.util.ArrayList;
 import java.util.List;
 
-public class CommunityLootshareState
+public class LootshareState
 {
 	public static final int CURRENT_SCHEMA_VERSION = 4;
 

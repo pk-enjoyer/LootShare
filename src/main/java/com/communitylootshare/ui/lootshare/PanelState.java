@@ -5,7 +5,7 @@
 
 package com.communitylootshare.ui.lootshare;
 
-import com.communitylootshare.debug.CommunityLootshareDebugSession.LootPreset;
+import com.communitylootshare.debug.DebugSession.LootPreset;
 import com.communitylootshare.domain.LootshareSettings;
 import com.communitylootshare.domain.MemberApprovalStatus;
 import com.communitylootshare.views.graph.SessionGraphMode;
@@ -21,7 +21,7 @@ import java.util.Objects;
 /**
  * Immutable client-thread snapshot rendered by the Swing sidebar.
  */
-public final class CommunityLootsharePanelState
+public final class PanelState
 {
 	private final boolean ready;
 	private final boolean inParty;
@@ -33,26 +33,26 @@ public final class CommunityLootsharePanelState
 	private final String sessionId;
 	private final SettlementState settlement;
 
-	public CommunityLootsharePanelState(boolean ready, boolean inParty, String partyPassphrase,
+	public PanelState(boolean ready, boolean inParty, String partyPassphrase,
 	                                    List<MemberLoot> members)
 	{
 		this(ready, inParty, partyPassphrase, members, false, DebugState.unavailable(), HostedSettings.waiting());
 	}
 
-	public CommunityLootsharePanelState(boolean ready, boolean inParty, String partyPassphrase,
+	public PanelState(boolean ready, boolean inParty, String partyPassphrase,
 	                                    List<MemberLoot> members, boolean previousPartyAvailable)
 	{
 		this(ready, inParty, partyPassphrase, members, previousPartyAvailable,
 			DebugState.unavailable(), HostedSettings.waiting());
 	}
 
-	public CommunityLootsharePanelState(boolean ready, boolean inParty, String partyPassphrase,
+	public PanelState(boolean ready, boolean inParty, String partyPassphrase,
 	                                    List<MemberLoot> members, DebugState debug)
 	{
 		this(ready, inParty, partyPassphrase, members, false, debug, HostedSettings.waiting());
 	}
 
-	public CommunityLootsharePanelState(boolean ready, boolean inParty, String partyPassphrase,
+	public PanelState(boolean ready, boolean inParty, String partyPassphrase,
 	                                    List<MemberLoot> members, boolean previousPartyAvailable,
 	                                    DebugState debug)
 	{
@@ -60,7 +60,7 @@ public final class CommunityLootsharePanelState
 			HostedSettings.waiting());
 	}
 
-	public CommunityLootsharePanelState(boolean ready, boolean inParty, String partyPassphrase,
+	public PanelState(boolean ready, boolean inParty, String partyPassphrase,
 	                                    List<MemberLoot> members, boolean previousPartyAvailable,
 	                                    DebugState debug, HostedSettings hostedSettings)
 	{
@@ -68,7 +68,7 @@ public final class CommunityLootsharePanelState
 			null, SettlementState.empty());
 	}
 
-	public CommunityLootsharePanelState(boolean ready, boolean inParty, String partyPassphrase,
+	public PanelState(boolean ready, boolean inParty, String partyPassphrase,
 	                                    List<MemberLoot> members, boolean previousPartyAvailable,
 	                                    DebugState debug, HostedSettings hostedSettings,
 	                                    String sessionId, SettlementState settlement)

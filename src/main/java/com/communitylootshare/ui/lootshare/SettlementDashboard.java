@@ -5,7 +5,7 @@
 
 package com.communitylootshare.ui.lootshare;
 
-import com.communitylootshare.ui.lootshare.CommunityLootsharePanelState.SettlementState;
+import com.communitylootshare.ui.lootshare.PanelState.SettlementState;
 import com.communitylootshare.views.graph.SessionGraphMode;
 import com.communitylootshare.views.graph.SessionGraphPanel;
 import com.communitylootshare.views.graph.SessionGraphSnapshot;
@@ -29,11 +29,11 @@ import net.runelite.client.util.QuantityFormatter;
 /**
  * Standalone settlement dashboard shown in the reusable popout window.
  */
-public final class CommunityLootshareSettlementDashboard extends JPanel
+public final class SettlementDashboard extends JPanel
 {
 	private static final int REFRESH_INTERVAL_MILLIS = 60_000;
 
-	private final CommunityLootshareSettlementView settlementView = new CommunityLootshareSettlementView();
+	private final SettlementView settlementView = new SettlementView();
 	private final SessionGraphPanel graphPanel = new SessionGraphPanel();
 	private final JComboBox<SessionGraphMode> graphModes = new JComboBox<>(SessionGraphMode.values());
 	private final JLabel totalLoot = statValue();
@@ -42,7 +42,7 @@ public final class CommunityLootshareSettlementDashboard extends JPanel
 	private final Timer refreshTimer;
 	private SettlementState state = SettlementState.empty();
 
-	public CommunityLootshareSettlementDashboard(Runnable refreshAction)
+	public SettlementDashboard(Runnable refreshAction)
 	{
 		setLayout(new BorderLayout());
 		setBackground(ColorScheme.DARK_GRAY_COLOR);
@@ -155,7 +155,7 @@ public final class CommunityLootshareSettlementDashboard extends JPanel
 			: snapshot.getTopPlayer() + ": " + exact(snapshot.getTopPlayerTotal()));
 	}
 
-	CommunityLootshareSettlementView getSettlementView()
+	SettlementView getSettlementView()
 	{
 		return settlementView;
 	}

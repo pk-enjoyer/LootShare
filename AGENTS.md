@@ -172,15 +172,15 @@ New high-end PvM boss plugins are not accepted as a blanket policy.
 
 This is a RuneLite external plugin named **Community Lootshare**. The active `com.communitylootshare` code captures RuneLite loot events, exchanges host-authorized decisions over RuneLite Party, persists profile-scoped sessions, computes exact splits and settlement transfers, and exposes Party, member-loot, eligibility, and settlement UI.
 
-The active plugin entry point is `com.communitylootshare.CommunityLootsharePlugin`, declared in `runelite-plugin.properties` and loaded by the development launcher.
+The active plugin entry point is `com.communitylootshare.LootsharePlugin`, declared in `runelite-plugin.properties` and loaded by the development launcher.
 
 
 ## Build And Test
 
 - `./gradlew test` runs the JUnit 4 test suite.
 - `./gradlew build` compiles and runs tests.
-- `./gradlew shadowJar` builds a runnable RuneLite development-client jar using `com.communitylootshare.CommunityLootsharePluginTest`.
-- `./gradlew run` loads `CommunityLootsharePlugin` in RuneLite developer/debug mode with assertions enabled.
+- `./gradlew shadowJar` builds a runnable RuneLite development-client jar using `com.communitylootshare.LootsharePluginTest`.
+- `./gradlew run` loads `LootsharePlugin` in RuneLite developer/debug mode with assertions enabled.
 - The project targets Java 11 in Gradle, even if local IDE/Qodana uses a newer JDK.
 - On this workstation, use Java 21 for Gradle because Lombok `1.18.30` does not compile under Java 25:
   `env JAVA_HOME=/usr/lib/jvm/java-21-temurin-jdk ./gradlew test`
@@ -208,103 +208,28 @@ Uphold these during normal changes:
 
 ## Active Community Lootshare Architecture
 
-- `CommunityLootsharePlugin` keeps RuneLite's `LootManager` active, captures its direct `ServerNpcLoot` events, registers the custom Party protocol, delegates RuneLite events to `CommunityLootshareController`, and unregisters its messages on shutdown.
-- `CommunityLootshareConfig` establishes the stable `community-lootshare` config group and stores hosted-party preferences for loot sources, GE/high-alchemy valuation, the minimum split value, logged-out roster inclusion, and guest self-attributed manual GP. Every enabled drop is captured and shared regardless of value; the minimum filters only split calculations. A guest's local preferences are not effective or overwritten while another member hosts.
+- `LootsharePlugin` keeps RuneLite's `LootManager` active, captures its direct `ServerNpcLoot` events, registers the custom Party protocol, delegates RuneLite events to `LootshareController`, and unregisters its messages on shutdown.
+- `LootshareConfig` establishes the stable `community-lootshare` config group and stores hosted-party preferences for loot sources, GE/high-alchemy valuation, the minimum split value, logged-out roster inclusion, and guest self-attributed manual GP. Every enabled drop is captured and shared regardless of value; the minimum filters only split calculations. A guest's local preferences are not effective or overwritten while another member hosts.
 - `LootCaptureService` converts RuneLite item-stack collections into canonical, immutable price snapshots using the synchronized host valuation basis and suppresses identical captures from the same game tick. Direct `ServerNpcLoot` and higher-level `LootReceived` delivery can therefore coexist without duplicate proposals.
 - `SharedLootItem` stores item/pricing IDs, quantity, and a captured unit price, validating IDs, quantity, price, and multiplication overflow.
 - `SharedLootEvent` stores bounded proposal metadata, a capture timestamp, and up to 128 item records, and computes an overflow-checked total.
 - `LootProposal` enforces pending/final state, authoritative owner identity, owner inclusion in accepted rosters, and decision chronology.
-- `CommunityLootshareEngine` owns bounded proposal and Party-session state, revisioned host/member eligibility, host-only decisions, duplicate/conflict handling, snapshot/restore, and history.
-- `CommunityLootshareProposalMessage` defines the bounded version-2 capture/manual-GP payload, `CommunityLootshareDecisionMessage` defines version-2 host decisions, and `CommunityLootshareHostMessage` defines the version-4 host-policy and member-eligibility snapshot. The receiving `PartyMemberMessage.memberId` is authoritative; sender IDs are not serialized in plugin payloads.
-- `CommunityLootshareController` coordinates asynchronous profile loading/saving, Party lifecycle and late-join sync, local capture, host/guest manual-GP validation, remote validation, automatic host decisions, eligibility changes, and calculation/history queries.
+- `LootshareEngine` owns bounded proposal and Party-session state, revisioned host/member eligibility, host-only decisions, duplicate/conflict handling, snapshot/restore, and history.
+- `ProposalMessage` defines the bounded version-2 capture/manual-GP payload, `DecisionMessage` defines version-2 host decisions, and `HostMessage` defines the version-4 host-policy and member-eligibility snapshot. The receiving `PartyMemberMessage.memberId` is authoritative; sender IDs are not serialized in plugin payloads.
+- `LootshareController` coordinates asynchronous profile loading/saving, Party lifecycle and late-join sync, local capture, host/guest manual-GP validation, remote validation, automatic host decisions, eligibility changes, and calculation/history queries.
 - The first RuneLite Party member becomes Community Lootshare host. Host authority and the complete capture/split policy are revisioned Party state; the host can transfer authority from the member-card right-click menu. Guests pause capture until the host snapshot is available and never fall back to their own preferences.
-- `CommunityLootshareStorage` writes schema-versioned profile files beneath `RuneLite.RUNELITE_DIR/community-lootshare` through an atomic temporary-file replacement. Malformed, oversized, or future-schema files become read-only instead of being overwritten.
+- `LootshareStorage` writes schema-versioned profile files beneath `RuneLite.RUNELITE_DIR/community-lootshare` through an atomic temporary-file replacement. Malformed, oversized, or future-schema files become read-only instead of being overwritten.
 - `LootshareCalculator` freezes entitlement per accepted proposal roster, assigns indivisible-coin remainders deterministically by Party member ID, and emits zero-sum balances plus direct settlement transfers.
-- `ui/lootshare/CommunityLootsharePanel` and `CommunityLootshareUiController` provide create/join/rejoin/leave Party controls, a collapsible effective-host-settings section, host-managed member eligibility, manual-GP actions, collapsible per-member loot summaries, a settlement section, and a reusable settlement graph popout. Rejoin uses RuneLite Party's existing hidden `previousPartyId` setting.
-- `CommunityLootshareDebugSession` and the sidebar's developer simulation controls provide isolated in-memory fake members plus coin and Tombs of Amascut loot presets only when RuneLite developer mode is active. Coin value is user-provided; item presets capture `ItemManager` prices resolved in the controller's client-thread snapshot. Debug state never mutates `PartyService`, sends Party messages, or persists.
+- `ui/lootshare/Panel` and `UiController` provide create/join/rejoin/leave Party controls, a collapsible effective-host-settings section, host-managed member eligibility, manual-GP actions, collapsible per-member loot summaries, a settlement section, and a reusable settlement graph popout. Rejoin uses RuneLite Party's existing hidden `previousPartyId` setting.
+- `DebugSession` and the sidebar's developer simulation controls provide isolated in-memory fake members plus coin and Tombs of Amascut loot presets only when RuneLite developer mode is active. Coin value is user-provided; item presets capture `ItemManager` prices resolved in the controller's client-thread snapshot. Debug state never mutates `PartyService`, sends Party messages, or persists.
 - No Community Lootshare overlay, notification, or history view is implemented yet. Do not present the sidebar as a user-complete workflow.
-
-## Retained Auto Split Manager Architecture (Legacy)
-
-Everything in this section through the legacy persistence, formatting, UI, and split-testing notes describes retained `com.communitylootshare` code. It is migration context, not active Community Lootshare functionality.
-
-- `ManagerPlugin` is the RuneLite plugin boundary. It registers the toolbar panel and overlay, handles RuneLite events, parses chat messages, and adds chat/player context menu entries.
-- `ManagerPanel` is the composition root for the sidebar UI. It creates `PanelController` and `PanelView`, and can rebuild the panel after certain config changes.
-- `PanelController` owns Swing event handling and UI refresh orchestration. View mutations should generally flow through controller methods.
-- `PanelView` is the Swing `PluginPanel`. Keep it mostly passive: render UI, expose components/models, and forward user actions through `PanelActions`.
-- `ManagerSession` owns sessions, pending values, split math, roster changes, and the current active session id.
-- `persistence/SessionStorage.java` owns the versioned per-profile session JSON file and migration from legacy hidden config keys.
-- `ManagerKnownPlayers` owns known players plus alt-to-main mappings, persisted through hidden config values.
-- `models/*Table.java` classes are Swing table models. `PlayerMetrics`, `Session`, `Kill`, `PendingValue`, and `Transfer` are the core data records.
-- `utils/Formats.java`, `MarkdownFormatter.java`, and `PaymentProcessor.java` contain shared parsing/formatting/settlement logic.
-
-## Session Model Invariants
-
-- A new split thread starts with two `Session` objects:
-  - a root "mother" session with `motherId == null`
-  - an initial active child session whose `motherId` points to the root
-- Kills are recorded only on the active child session.
-- Roster changes after any kill/event exists fork a new child session under the same mother. The previous child is ended and the new child becomes current.
-- Roster changes before any kill/event mutate the current child in place.
-- `Kill.type == null` or `"LOOT"` is counted in split math.
-- `Kill.type == "JOINED"` or `"LEFT"` is shown in recent splits but excluded from split math.
-- Alt names should be resolved through `ManagerKnownPlayers.getMainName()` before adding players, kills, pending values, or checking roster membership.
-- `computeMetricsFor(session, true)` is what the UI generally uses so inactive players from the thread remain visible.
-- Current split sign convention: `split = sessionAverage - playerTotal`. Negative means that player owes; positive means that player should receive.
-
-## Chat Detection
-
-`ManagerPlugin.onChatMessage` only processes clan/friends chat messages when chat detection and the relevant channel toggles are enabled.
-
-Supported detections:
-
-- PvM drop messages matching `received a drop: ... (N coins)`
-- PvP loot messages matching `has defeated ... and received (N coins) worth of loot!`
-- Player `!add` commands with one or more values, such as `!add 100`, `!add 1.2m`, or `!add 100, 200m 300k`
-
-Detected values become `PendingValue` entries unless `autoApplyWhenInSession()` is enabled and the suggested/resolved player is already in the active roster.
-
-## Persistence
-
-Session data uses a versioned per-profile JSON file:
-
-- `SessionStorage` writes `~/.runelite/auto-split-manager/{profileName}-{profileId}.auto-split-manager.sessions.json`.
-- The file stores `schemaVersion`, `sessions`, `currentSessionId`, and `historyLoaded`.
-- `schemaVersion` is currently `1`.
-- On startup, if the file does not exist, legacy hidden config keys `sessionsJson`, `currentSessionId`, and `historyLoaded` are migrated into the file.
-- Legacy session config keys are cleared only after the new file write succeeds.
-- `PlayersCsv` still stores known players through hidden config.
-- `altsJson` still stores alt-to-main mappings through hidden config.
-- `InstantTypeAdapter` must be registered on Gson instances that serialize session/player data containing `Instant`.
-
-Avoid changing hidden config key names unless you also plan a migration path.
-
-When a config item changes the factual settlement calculation, persist the relevant calculation context on the mother session at thread start and at thread end. Historical session metrics should prefer the saved end context, then the saved start context, and only fall back to current global config for older sessions without saved context.
-
-## Formatting And Units
-
-- `Formats.OsrsAmountFormatter` parses OSRS amounts like `10k`, `1.1m`, `1b`, and `coins`.
-- Raw amounts in model/math code are coin values, despite some older comments or variable names mentioning K.
-- The default multiplier comes from `PluginConfig.defaultValueMultiplier()` when a user omits a suffix.
-- `PaymentProcessor` treats negative `PlayerMetrics.split` values as payers and positive values as receivers.
-
-## UI Notes
-
-- This is Swing UI inside RuneLite, not a web frontend.
-- Keep RuneLite UI code on established Swing patterns already present in `PanelView`.
-- After model mutations, call the relevant controller or `ManagerPanel.refreshAllView()` path so metrics, waitlist, recent splits, and button states stay in sync.
-- `ManagerPlugin.restartViewFix()` rebuilds the sidebar panel for config changes that affect structure.
 
 ## Testing Guidance
 
 Existing tests cover:
 
 - initial Community Lootshare proposal/item domain behavior in `SharedLootEventTest`
-- session lifecycle and split math in `ManagerSessionTest`
-- alt/main behavior in `ManagerKnownPlayersTest`
-- direct settlement routing in `PaymentProcessorTest`
-- markdown output in `MarkdownFormatterTest`
-- chat `!add` parsing in `ManagerPluginTest`
+- host policy, Party payload decoding, state lifecycle, split/settlement math, atomic persistence, and the active controller boundary
 
 When changing behavior, add or update focused JUnit 4 tests near the affected class. For split math changes, include multi-segment roster-change scenarios because most regressions hide there.
 
@@ -314,33 +239,28 @@ Use `src/test/java` for automated unit tests and keep the full RuneLite client l
 
 - Test names should follow `<ClassUnderTest>Test`, matching the current JUnit 4 style.
 - Use JUnit 4 assertions and `@Test`; do not introduce JUnit 5 unless the project is deliberately migrated.
-- Use Mockito for RuneLite boundaries such as `Client`, `PluginConfig`, `ClientToolbar`, `OverlayManager`, `ManagerPanel`, and `ManagerPlugin`.
+- Use Mockito for RuneLite boundaries such as `Client`, `LootshareConfig`, `ClientToolbar`, `PartyService`, and `LootsharePlugin`.
 - Prefer real domain objects and mocked RuneLite/client objects. Unit tests should not start RuneLite, log into OSRS, hit the network, require graphics, or depend on the user's RuneLite config directory.
 - Stub config values explicitly. Mockito will not reliably exercise interface default methods unless configured to call real methods.
-- Use a real `Gson` configured with `InstantTypeAdapter` when testing persistence or session JSON.
-- For session persistence tests, prefer `SessionStorage` with `TemporaryFolder` so tests do not touch the user's RuneLite profile directory.
+- Use a real `Gson` configured with `InstantTypeAdapter` when testing Community Lootshare persistence or session JSON.
+- For persistence tests, prefer `LootshareStorage` with `TemporaryFolder` so tests do not touch the user's RuneLite profile directory.
 - Keep tests deterministic: avoid assertions based on wall-clock timestamps, random UUID values, Swing focus, table row selection side effects, or map ordering unless the ordering is part of the contract.
 - Assert raw amounts in coins. Use formatted strings only when testing formatter/table output.
-- For split math, assert both totals and split sign. Negative split means payer/owes; positive split means receiver/is owed.
-- For multi-segment sessions, assert current roster, inactive players, child-session behavior, and final metrics. Most regressions in this plugin happen around roster changes after loot.
-- For chat detection, construct `ChatMessage` objects directly, set `type`, `name`, and `message`, then verify the resulting `PendingValue` captured from `ManagerSession.addPendingValue`.
-- For table models such as `Metrics`, `WaitlistTable`, and `RecentSplitsTable`, instantiate the model directly and assert `getValueAt`, editability, and mutation behavior.
+- For split math, assert accepted totals, frozen rosters, balances, and transfers. Negative net value means payer/owes; positive net value means receiver/is owed.
+- For manual GP, test host attribution, guest self-attribution policy, Party payload validation, and rejection of unauthorised or ineligible targets.
 - Avoid unit tests that invoke `JOptionPane`, clipboard access, or actual `NavigationButton`/toolbar registration. If behavior needs testing, move the decision into controller/domain code and leave the UI call as a thin shell.
 - If Swing behavior must be tested, run UI mutation code on the EDT with `SwingUtilities.invokeAndWait`, and keep it headless-safe.
 
 RuneLite-specific testing layers:
 
 - **Community Lootshare backend tests:** focused tests cover immutable event/proposal/session validation, capture/deduplication, Party payload decoding, state lifecycle, split/settlement math, atomic persistence, and the active controller boundary.
-- **Legacy domain unit tests:** `ManagerSession`, `ManagerKnownPlayers`, `Formats`, `PaymentProcessor`, and `MarkdownFormatter` remain useful when evaluating migration candidates.
-- **Legacy boundary unit tests:** `ManagerPlugin` event handlers use mocked config/session/panel dependencies and synthetic RuneLite events.
-- **Legacy view/model tests:** Swing table models and formatting behavior run without starting the RuneLite client.
-- **Manual smoke test:** `com.communitylootshare.CommunityLootsharePluginTest` loads `CommunityLootsharePlugin` via `ExternalPluginManager.loadBuiltin(...)` and launches RuneLite. Treat this as a manual development-client path, not an automated unit test.
+- **Manual smoke test:** `com.communitylootshare.LootsharePluginTest` loads `LootsharePlugin` via `ExternalPluginManager.loadBuiltin(...)` and launches RuneLite. Treat this as a manual development-client path, not an automated unit test.
 
 Best setup for this RuneLite external plugin:
 
 - Keep `testImplementation 'junit:junit:4.12'`, Mockito, `net.runelite:client`, and `net.runelite:jshell`.
 - Keep automated verification on `./gradlew test`.
-- The `run` Gradle task launches `com.communitylootshare.CommunityLootsharePluginTest`, enables assertions, and passes `--developer-mode`/`--debug`.
+- The `run` Gradle task launches `com.communitylootshare.LootsharePluginTest`, enables assertions, and passes `--developer-mode`/`--debug`.
 - Production sources compile to Java 11 bytecode. On this workstation, invoke Gradle with the documented Java 21 JDK; a JRE-only install is not enough because Gradle needs `javac`.
 
 Research references:
@@ -353,6 +273,4 @@ Research references:
 ## Current Cautions
 
 - The repository may contain local uncommitted changes; check `git status --short` before editing and do not revert unrelated user work.
-- Some TODOs are intentional placeholders, including JSON export methods and direct payment UI limitations.
-- `ManagerSession.stopSession` displays a `JOptionPane`, which makes complete unit testing awkward in headless tests.
-- Be careful around `ManagerSession.sessionHasPlayer`; callers should avoid passing a null session.
+- The developer simulation is intentionally isolated: it must never mutate `PartyService`, send Party messages, or persist history.

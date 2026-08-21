@@ -26,7 +26,7 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import org.junit.Test;
 
-public class CommunityLootsharePartyMessageTest
+public class PartyMessageTest
 {
 	private final Gson gson = new Gson();
 
@@ -34,13 +34,13 @@ public class CommunityLootsharePartyMessageTest
 	public void proposalMessageRoundTripsImmutablePriceSnapshot()
 	{
 		LootProposal proposal = pending("p1");
-		CommunityLootshareProposalMessage message = new CommunityLootshareProposalMessage(proposal);
+		ProposalMessage message = new ProposalMessage(proposal);
 		message.setMemberId(7L);
 
-		assertEquals(CommunityLootshareProposalMessage.PROTOCOL_VERSION, message.getProtocolVersion());
+		assertEquals(ProposalMessage.PROTOCOL_VERSION, message.getProtocolVersion());
 		assertEquals("p1", message.getProposalId());
 		assertEquals(1, message.getItems().size());
-		CommunityLootshareProposalMessage.ItemPayload item = message.getItems().get(0);
+		ProposalMessage.ItemPayload item = message.getItems().get(0);
 		assertEquals(100, item.getItemId());
 		assertEquals(101, item.getPricingId());
 		assertEquals(2L, item.getQuantity());
@@ -67,16 +67,16 @@ public class CommunityLootsharePartyMessageTest
 		LootProposal accepted = pending("accepted").decide(LootProposalStatus.ACCEPTED,
 			Instant.ofEpochSecond(2), Arrays.asList(
 				new LootshareParticipant(7L, "Alice"), new LootshareParticipant(8L, "Bob")));
-		CommunityLootshareDecisionMessage acceptedMessage = new CommunityLootshareDecisionMessage(accepted);
+		DecisionMessage acceptedMessage = new DecisionMessage(accepted);
 		acceptedMessage.setMemberId(7L);
-		assertEquals(CommunityLootshareDecisionMessage.PROTOCOL_VERSION, acceptedMessage.getProtocolVersion());
+		assertEquals(DecisionMessage.PROTOCOL_VERSION, acceptedMessage.getProtocolVersion());
 		assertEquals("accepted", acceptedMessage.getProposalId());
 		assertEquals("ACCEPTED", acceptedMessage.getDecision());
 		assertEquals(2, acceptedMessage.getParticipants().size());
 		assertEquals(7L, acceptedMessage.getParticipants().get(0).getMemberId());
 		assertEquals("Alice", acceptedMessage.getParticipants().get(0).getDisplayName());
 
-		CommunityLootshareDecisionMessage.DecodedDecision decoded = acceptedMessage.decode().get();
+		DecisionMessage.DecodedDecision decoded = acceptedMessage.decode().get();
 		assertEquals("accepted", decoded.getProposalId());
 		assertEquals(LootProposalStatus.ACCEPTED, decoded.getStatus());
 		assertEquals(Instant.ofEpochSecond(2), decoded.getDecidedAt());
@@ -84,7 +84,7 @@ public class CommunityLootsharePartyMessageTest
 
 		LootProposal rejected = pending("rejected").decide(LootProposalStatus.REJECTED,
 			Instant.ofEpochSecond(3), Collections.emptyList());
-		CommunityLootshareDecisionMessage rejectedMessage = new CommunityLootshareDecisionMessage(rejected);
+		DecisionMessage rejectedMessage = new DecisionMessage(rejected);
 		rejectedMessage.setMemberId(7L);
 		assertEquals(LootProposalStatus.REJECTED, rejectedMessage.decode().get().getStatus());
 		assertTrue(rejectedMessage.getParticipants().isEmpty());
@@ -104,14 +104,14 @@ public class CommunityLootsharePartyMessageTest
 	{
 		LootshareSettings settings = new LootshareSettings(100_000L, LootValueBasis.HIGH_ALCHEMY,
 			true, false, true, false, true, true);
-		CommunityLootshareHostMessage initial = new CommunityLootshareHostMessage(7L, settings, 1L);
+		HostMessage initial = new HostMessage(7L, settings, 1L);
 		initial.setMemberId(7L);
-		assertEquals(CommunityLootshareHostMessage.PROTOCOL_VERSION, initial.getProtocolVersion());
+		assertEquals(HostMessage.PROTOCOL_VERSION, initial.getProtocolVersion());
 		assertEquals(7L, initial.getHostMemberId());
 		assertEquals(100_000L, initial.getMinimumSharedLootValue());
 		assertEquals("HIGH_ALCHEMY", initial.getLootValueBasis());
 		assertEquals(1L, initial.getRevision());
-		CommunityLootshareHostMessage.DecodedHostState initialState = initial.decode().get();
+		HostMessage.DecodedHostState initialState = initial.decode().get();
 		assertEquals(7L, initialState.getHostMemberId());
 		assertEquals(100_000L, initialState.getMinimumSharedLootValue());
 		assertEquals(settings, initialState.getSettings());
@@ -123,14 +123,14 @@ public class CommunityLootsharePartyMessageTest
 		approvals.put(7L, MemberApprovalStatus.APPROVED);
 		approvals.put(8L, MemberApprovalStatus.EXCLUDED);
 		approvals.put(9L, MemberApprovalStatus.PENDING);
-		CommunityLootshareHostMessage withApprovals =
-			new CommunityLootshareHostMessage(7L, settings, 2L, approvals);
+		HostMessage withApprovals =
+			new HostMessage(7L, settings, 2L, approvals);
 		withApprovals.setMemberId(7L);
 		assertEquals(MemberApprovalStatus.EXCLUDED,
 			withApprovals.decode().get().getApprovalStatuses().get(8L));
 		assertFalse(withApprovals.decode().get().getApprovalStatuses().containsKey(9L));
 
-		CommunityLootshareHostMessage transfer = new CommunityLootshareHostMessage(8L, 100_000L, 2L);
+		HostMessage transfer = new HostMessage(8L, 100_000L, 2L);
 		transfer.setMemberId(7L);
 		assertEquals(8L, transfer.decode().get().getHostMemberId());
 	}
@@ -171,9 +171,9 @@ public class CommunityLootsharePartyMessageTest
 			"{\"memberId\":1,\"status\":\"APPROVED\"}",
 			"{\"memberId\":1,\"status\":\"APPROVED\"},{\"memberId\":1,\"status\":\"APPROVED\"}"),
 			1L).decode().isPresent());
-		expectIllegal(() -> new CommunityLootshareHostMessage(0L, 0L, 1L));
-		expectIllegal(() -> new CommunityLootshareHostMessage(1L, (LootshareSettings) null, 1L));
-		expectIllegal(() -> new CommunityLootshareHostMessage(1L, LootshareSettings.defaults(), 1L,
+		expectIllegal(() -> new HostMessage(0L, 0L, 1L));
+		expectIllegal(() -> new HostMessage(1L, (LootshareSettings) null, 1L));
+		expectIllegal(() -> new HostMessage(1L, LootshareSettings.defaults(), 1L,
 			Collections.singletonMap(1L, MemberApprovalStatus.EXCLUDED)));
 	}
 
@@ -196,7 +196,7 @@ public class CommunityLootsharePartyMessageTest
 			+ "\"sourceLabel\":\"Boss\",\"capturedAtEpochMilli\":0,"
 			+ "\"items\":[{\"itemId\":-1,\"pricingId\":1,\"quantity\":1,\"unitPrice\":1}]}", 1L)
 			.decode(1L).isPresent());
-		expectIllegal(() -> new CommunityLootshareProposalMessage(null));
+		expectIllegal(() -> new ProposalMessage(null));
 	}
 
 	@Test
@@ -223,27 +223,27 @@ public class CommunityLootsharePartyMessageTest
 		assertFalse(decision("{\"protocolVersion\":2,\"proposalId\":\"p\",\"decision\":\"ACCEPTED\","
 			+ "\"decidedAtEpochMilli\":0,\"participants\":[" + tooManyParticipants + "]}", 1L)
 			.decode().isPresent());
-		expectIllegal(() -> new CommunityLootshareDecisionMessage(null));
-		expectIllegal(() -> new CommunityLootshareDecisionMessage(pending("pending")));
+		expectIllegal(() -> new DecisionMessage(null));
+		expectIllegal(() -> new DecisionMessage(pending("pending")));
 	}
 
-	private CommunityLootshareProposalMessage proposal(String json, long memberId)
+	private ProposalMessage proposal(String json, long memberId)
 	{
-		CommunityLootshareProposalMessage message = gson.fromJson(json, CommunityLootshareProposalMessage.class);
+		ProposalMessage message = gson.fromJson(json, ProposalMessage.class);
 		message.setMemberId(memberId);
 		return message;
 	}
 
-	private CommunityLootshareDecisionMessage decision(String json, long memberId)
+	private DecisionMessage decision(String json, long memberId)
 	{
-		CommunityLootshareDecisionMessage message = gson.fromJson(json, CommunityLootshareDecisionMessage.class);
+		DecisionMessage message = gson.fromJson(json, DecisionMessage.class);
 		message.setMemberId(memberId);
 		return message;
 	}
 
-	private CommunityLootshareHostMessage host(String json, long memberId)
+	private HostMessage host(String json, long memberId)
 	{
-		CommunityLootshareHostMessage message = gson.fromJson(json, CommunityLootshareHostMessage.class);
+		HostMessage message = gson.fromJson(json, HostMessage.class);
 		message.setMemberId(memberId);
 		return message;
 	}

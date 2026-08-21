@@ -14,9 +14,9 @@ import com.communitylootshare.domain.LootshareSettings;
 import com.communitylootshare.domain.MemberApprovalStatus;
 import com.communitylootshare.domain.SharedLootEvent;
 import com.communitylootshare.domain.SharedLootItem;
-import com.communitylootshare.sessions.CommunityLootshareEngine;
-import com.communitylootshare.sessions.CommunityLootshareEngine.DecisionOutcome;
-import com.communitylootshare.sessions.CommunityLootshareEngine.MutationResult;
+import com.communitylootshare.sessions.LootshareEngine;
+import com.communitylootshare.sessions.LootshareEngine.DecisionOutcome;
+import com.communitylootshare.sessions.LootshareEngine.MutationResult;
 import com.communitylootshare.sessions.LootshareCalculator;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -35,7 +35,7 @@ import net.runelite.api.gameval.ItemID;
  * {@code PartyService}, sends Party messages, or enters the persisted live engine.</p>
  */
 @Singleton
-public class CommunityLootshareDebugSession
+public class DebugSession
 {
 	public static final long DEBUG_PARTY_ID = 8_000_000_000_000_000_000L;
 	public static final long DEBUG_OWNER_MEMBER_ID = 9_000_000_000_000_000_000L;
@@ -46,18 +46,18 @@ public class CommunityLootshareDebugSession
 	private static final String DEBUG_SOURCE_LABEL = "Debug loot";
 	private static final String TOA_SOURCE_LABEL = "Tombs of Amascut (debug)";
 	private final boolean developerMode;
-	private final CommunityLootshareEngine engine;
+	private final LootshareEngine engine;
 	private final LootshareCalculator calculator;
 	private final List<LootshareParticipant> participants = new ArrayList<>();
 	private boolean active;
 	private int nextMemberSequence;
 	private int nextProposalSequence;
 	@Inject
-	public CommunityLootshareDebugSession(@Named("developerMode") boolean developerMode,
+	public DebugSession(@Named("developerMode") boolean developerMode,
 	                                      LootshareCalculator calculator)
 	{
 		this.developerMode = developerMode;
-		this.engine = new CommunityLootshareEngine();
+		this.engine = new LootshareEngine();
 		this.calculator = calculator;
 	}
 

@@ -1,12 +1,12 @@
 package com.communitylootshare;
 
-import com.communitylootshare.integration.CommunityLootshareController;
-import com.communitylootshare.party.CommunityLootshareDecisionMessage;
-import com.communitylootshare.party.CommunityLootshareHostMessage;
-import com.communitylootshare.party.CommunityLootshareProposalMessage;
+import com.communitylootshare.integration.LootshareController;
+import com.communitylootshare.party.DecisionMessage;
+import com.communitylootshare.party.HostMessage;
+import com.communitylootshare.party.ProposalMessage;
 import com.communitylootshare.ui.SwingUiInteractionGateway;
-import com.communitylootshare.ui.lootshare.CommunityLootsharePanel;
-import com.communitylootshare.ui.lootshare.CommunityLootshareUiController;
+import com.communitylootshare.ui.lootshare.Panel;
+import com.communitylootshare.ui.lootshare.UiController;
 import com.google.inject.Provides;
 import java.awt.image.BufferedImage;
 import javax.inject.Inject;
@@ -40,13 +40,13 @@ import net.runelite.client.util.ImageUtil;
 	name = "Community Lootshare",
 	description = "Host-managed Party loot sharing with immutable price history and exact settlements"
 )
-public class CommunityLootsharePlugin extends Plugin
+public class LootsharePlugin extends Plugin
 {
 	private static final BufferedImage ICON = ImageUtil.loadImageResource(
-		CommunityLootsharePlugin.class, "/com/communitylootshare/icons/icon.png");
+		LootsharePlugin.class, "/com/communitylootshare/icons/icon.png");
 
 	@Inject
-	private CommunityLootshareController controller;
+	private LootshareController controller;
 
 	@Inject
 	private WSClient wsClient;
@@ -67,9 +67,9 @@ public class CommunityLootsharePlugin extends Plugin
 	private SwingUiInteractionGateway interactions;
 
 	@Inject
-	private CommunityLootshareUiController uiController;
+	private UiController uiController;
 
-	private CommunityLootsharePanel panel;
+	private Panel panel;
 	private NavigationButton navigationButton;
 	private volatile boolean started;
 
@@ -77,16 +77,16 @@ public class CommunityLootsharePlugin extends Plugin
 	protected void startUp()
 	{
 		started = true;
-		wsClient.registerMessage(CommunityLootshareProposalMessage.class);
-		wsClient.registerMessage(CommunityLootshareDecisionMessage.class);
-		wsClient.registerMessage(CommunityLootshareHostMessage.class);
+		wsClient.registerMessage(ProposalMessage.class);
+		wsClient.registerMessage(DecisionMessage.class);
+		wsClient.registerMessage(HostMessage.class);
 		controller.start();
 		SwingUtilities.invokeLater(() -> {
 			if (!started)
 			{
 				return;
 			}
-			panel = new CommunityLootsharePanel(uiController, interactions, itemManager);
+			panel = new Panel(uiController, interactions, itemManager);
 			navigationButton = NavigationButton.builder()
 				.tooltip("Community Lootshare")
 				.icon(ICON)
@@ -113,9 +113,9 @@ public class CommunityLootsharePlugin extends Plugin
 			}
 		});
 		controller.stop();
-		wsClient.unregisterMessage(CommunityLootshareProposalMessage.class);
-		wsClient.unregisterMessage(CommunityLootshareDecisionMessage.class);
-		wsClient.unregisterMessage(CommunityLootshareHostMessage.class);
+		wsClient.unregisterMessage(ProposalMessage.class);
+		wsClient.unregisterMessage(DecisionMessage.class);
+		wsClient.unregisterMessage(HostMessage.class);
 	}
 
 	@Subscribe
@@ -137,19 +137,19 @@ public class CommunityLootsharePlugin extends Plugin
 	}
 
 	@Subscribe
-	public void onCommunityLootshareProposalMessage(CommunityLootshareProposalMessage message)
+	public void onCommunityLootshareProposalMessage(ProposalMessage message)
 	{
 		controller.onProposalMessage(message);
 	}
 
 	@Subscribe
-	public void onCommunityLootshareDecisionMessage(CommunityLootshareDecisionMessage message)
+	public void onCommunityLootshareDecisionMessage(DecisionMessage message)
 	{
 		controller.onDecisionMessage(message);
 	}
 
 	@Subscribe
-	public void onCommunityLootshareHostMessage(CommunityLootshareHostMessage message)
+	public void onCommunityLootshareHostMessage(HostMessage message)
 	{
 		controller.onHostMessage(message);
 	}
@@ -178,7 +178,7 @@ public class CommunityLootsharePlugin extends Plugin
 	@Subscribe
 	public void onConfigChanged(ConfigChanged event)
 	{
-		if (event != null && CommunityLootshareConfig.GROUP.equals(event.getGroup()))
+		if (event != null && LootshareConfig.GROUP.equals(event.getGroup()))
 		{
 			controller.onLocalConfigurationChanged();
 			uiController.refresh();
@@ -214,8 +214,8 @@ public class CommunityLootsharePlugin extends Plugin
 	}
 
 	@Provides
-	CommunityLootshareConfig provideConfig(ConfigManager configManager)
+	LootshareConfig provideConfig(ConfigManager configManager)
 	{
-		return configManager.getConfig(CommunityLootshareConfig.class);
+		return configManager.getConfig(LootshareConfig.class);
 	}
 }

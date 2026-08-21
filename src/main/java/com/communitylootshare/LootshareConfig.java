@@ -8,8 +8,8 @@ import net.runelite.client.config.ConfigSection;
 import net.runelite.client.config.Range;
 import net.runelite.client.config.Units;
 
-@ConfigGroup(CommunityLootshareConfig.GROUP)
-public interface CommunityLootshareConfig extends Config
+@ConfigGroup(LootshareConfig.GROUP)
+public interface LootshareConfig extends Config
 {
 	String GROUP = "community-lootshare";
 	String MINIMUM_SHARED_LOOT_VALUE_KEY = "minimumSharedLootValue";

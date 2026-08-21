@@ -5,10 +5,10 @@
 
 package com.communitylootshare.ui.lootshare;
 
-import com.communitylootshare.debug.CommunityLootshareDebugSession;
-import com.communitylootshare.debug.CommunityLootshareDebugSession.LootPreset;
-import com.communitylootshare.integration.CommunityLootshareController;
-import com.communitylootshare.sessions.CommunityLootshareEngine.MutationResult;
+import com.communitylootshare.debug.DebugSession;
+import com.communitylootshare.debug.DebugSession.LootPreset;
+import com.communitylootshare.integration.LootshareController;
+import com.communitylootshare.sessions.LootshareEngine.MutationResult;
 import com.communitylootshare.sessions.LootshareCalculator;
 import javax.swing.SwingUtilities;
 import net.runelite.api.Client;
@@ -29,12 +29,12 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-public class CommunityLootshareUiControllerDebugTest
+public class UiControllerDebugTest
 {
 	private PartyService partyService;
 	private ItemManager itemManager;
-	private CommunityLootshareDebugSession debugSession;
-	private CommunityLootshareUiController controller;
+	private DebugSession debugSession;
+	private UiController controller;
 
 	@Before
 	public void setUp()
@@ -43,8 +43,8 @@ public class CommunityLootshareUiControllerDebugTest
 		ClientThread clientThread = mock(ClientThread.class);
 		partyService = mock(PartyService.class);
 		itemManager = mock(ItemManager.class);
-		CommunityLootshareController lootshareController = mock(CommunityLootshareController.class);
-		debugSession = new CommunityLootshareDebugSession(true, new LootshareCalculator());
+		LootshareController lootshareController = mock(LootshareController.class);
+		debugSession = new DebugSession(true, new LootshareCalculator());
 		doAnswer(invocation -> {
 			((Runnable) invocation.getArgument(0)).run();
 			return null;
@@ -59,9 +59,9 @@ public class CommunityLootshareUiControllerDebugTest
 		when(itemManager.getItemPrice(ItemID.LIGHTBEARER)).thenReturn(2_500_000);
 		when(itemManager.getItemPrice(ItemID.MASORI_BODY)).thenReturn(43_636_445);
 		when(itemManager.getItemPrice(ItemID.TUMEKENS_SHADOW_UNCHARGED)).thenReturn(880_012_003);
-		controller = new CommunityLootshareUiController(client, clientThread, partyService,
+		controller = new UiController(client, clientThread, partyService,
 			itemManager, lootshareController, debugSession);
-		controller.start(mock(CommunityLootsharePanel.class));
+		controller.start(mock(Panel.class));
 	}
 
 	@Test
@@ -73,8 +73,8 @@ public class CommunityLootshareUiControllerDebugTest
 		assertTrue(controller.addDebugLoot(
 			ownerMemberId, LootPreset.OSMUMTENS_FANG, 1L));
 
-		CommunityLootsharePanelState state = controller.buildState();
-		CommunityLootsharePanelState.LootItem item = state.getMembers().get(0).getItems().get(0);
+		PanelState state = controller.buildState();
+		PanelState.LootItem item = state.getMembers().get(0).getItems().get(0);
 		assertEquals(ItemID.OSMUMTENS_FANG, item.getItemId());
 		assertEquals("Osmumten's fang", item.getName());
 		assertEquals(1L, item.getQuantity());
@@ -93,7 +93,7 @@ public class CommunityLootshareUiControllerDebugTest
 		assertEquals(MutationResult.APPLIED, debugSession.setMemberApproved(aliceMemberId, true));
 		assertTrue(controller.addDebugLoot(aliceMemberId, 250_000L));
 
-		CommunityLootsharePanelState state = controller.buildState();
+		PanelState state = controller.buildState();
 		assertTrue(state.isReady());
 		assertTrue(state.isInParty());
 		assertTrue(state.getDebug().isAvailable());

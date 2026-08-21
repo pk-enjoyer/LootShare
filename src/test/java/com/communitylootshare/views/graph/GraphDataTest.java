@@ -24,7 +24,7 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import org.junit.Test;
 
-public class CommunityLootshareGraphDataTest
+public class GraphDataTest
 {
 	@Test
 	public void buildsAllGraphModesFromFrozenAcceptedLoot()
@@ -38,7 +38,7 @@ public class CommunityLootshareGraphDataTest
 		LootshareCalculation calculation = new LootshareCalculator().calculate(session);
 		Instant now = Instant.ofEpochSecond(10_800L);
 
-		SessionGraphSnapshot rate = CommunityLootshareGraphData.build(
+		SessionGraphSnapshot rate = GraphData.build(
 			session, calculation, SessionGraphMode.GP_PER_HOUR, now);
 		assertEquals(10_800L, rate.getTotalLoot());
 		assertEquals(3_600L, rate.getGpPerHour());
@@ -49,7 +49,7 @@ public class CommunityLootshareGraphDataTest
 		assertEquals(5_400L, rate.getEntries().get(1).getValue());
 		assertEquals(3_600L, rate.getEntries().get(2).getValue());
 
-		SessionGraphSnapshot earnings = CommunityLootshareGraphData.build(
+		SessionGraphSnapshot earnings = GraphData.build(
 			session, calculation, SessionGraphMode.HIGHEST_EARNINGS, now);
 		assertEquals("Bob", earnings.getEntries().get(0).getLabel());
 		assertEquals(7_200L, earnings.getEntries().get(0).getValue());
@@ -57,7 +57,7 @@ public class CommunityLootshareGraphDataTest
 		assertEquals("Alice", earnings.getEntries().get(1).getLabel());
 		assertTrue(earnings.getEntries().get(1).isActive());
 
-		SessionGraphSnapshot balance = CommunityLootshareGraphData.build(
+		SessionGraphSnapshot balance = GraphData.build(
 			session, calculation, SessionGraphMode.SPLIT_BALANCE, now);
 		assertEquals(2, balance.getEntries().size());
 		assertEquals(1_800L, balance.getEntries().get(0).getValue());
@@ -67,7 +67,7 @@ public class CommunityLootshareGraphDataTest
 	@Test
 	public void returnsAnEmptySnapshotWithoutAnActiveSession()
 	{
-		SessionGraphSnapshot snapshot = CommunityLootshareGraphData.build(
+		SessionGraphSnapshot snapshot = GraphData.build(
 			null, LootshareCalculation.empty(), SessionGraphMode.SPLIT_BALANCE, Instant.EPOCH);
 		assertTrue(snapshot.isEmpty());
 		assertEquals(SessionGraphMode.SPLIT_BALANCE, snapshot.getMode());

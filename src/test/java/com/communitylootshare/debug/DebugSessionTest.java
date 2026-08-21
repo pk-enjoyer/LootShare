@@ -5,14 +5,14 @@
 
 package com.communitylootshare.debug;
 
-import com.communitylootshare.debug.CommunityLootshareDebugSession.LootPreset;
-import com.communitylootshare.debug.CommunityLootshareDebugSession.Snapshot;
+import com.communitylootshare.debug.DebugSession.LootPreset;
+import com.communitylootshare.debug.DebugSession.Snapshot;
 import com.communitylootshare.domain.LootProposal;
 import com.communitylootshare.domain.LootProposalStatus;
 import com.communitylootshare.domain.LootshareCalculation;
 import com.communitylootshare.domain.LootshareParticipant;
 import com.communitylootshare.domain.SharedLootItem;
-import com.communitylootshare.sessions.CommunityLootshareEngine.MutationResult;
+import com.communitylootshare.sessions.LootshareEngine.MutationResult;
 import com.communitylootshare.sessions.LootshareCalculator;
 import java.util.Optional;
 import net.runelite.api.gameval.ItemID;
@@ -23,21 +23,21 @@ import static org.junit.Assert.assertTrue;
 import org.junit.Before;
 import org.junit.Test;
 
-public class CommunityLootshareDebugSessionTest
+public class DebugSessionTest
 {
-	private CommunityLootshareDebugSession session;
+	private DebugSession session;
 
 	@Before
 	public void setUp()
 	{
-		session = new CommunityLootshareDebugSession(true, new LootshareCalculator());
+		session = new DebugSession(true, new LootshareCalculator());
 	}
 
 	@Test
 	public void refusesToStartOutsideRuneLiteDeveloperMode()
 	{
-		CommunityLootshareDebugSession production =
-			new CommunityLootshareDebugSession(false, new LootshareCalculator());
+		DebugSession production =
+			new DebugSession(false, new LootshareCalculator());
 
 		assertFalse(production.isAvailable());
 		production.startSimulation();
@@ -73,10 +73,10 @@ public class CommunityLootshareDebugSessionTest
 		Snapshot started = session.snapshot();
 		assertTrue(session.isActive());
 		assertTrue(started.isActive());
-		assertEquals(CommunityLootshareDebugSession.DEBUG_PARTY_ID, started.getPartyId());
-		assertEquals(CommunityLootshareDebugSession.DEBUG_OWNER_MEMBER_ID, started.getOwnerMemberId());
+		assertEquals(DebugSession.DEBUG_PARTY_ID, started.getPartyId());
+		assertEquals(DebugSession.DEBUG_OWNER_MEMBER_ID, started.getOwnerMemberId());
 		assertEquals(1, started.getParticipants().size());
-		assertEquals(CommunityLootshareDebugSession.DEBUG_OWNER_NAME,
+		assertEquals(DebugSession.DEBUG_OWNER_NAME,
 			started.getParticipants().get(0).getDisplayName());
 
 		Optional<LootshareParticipant> alice = session.addFakePlayer("  Alice  ");
@@ -89,7 +89,7 @@ public class CommunityLootshareDebugSessionTest
 		assertFalse(session.addFakePlayer(" ").isPresent());
 		assertFalse(session.addFakePlayer(null).isPresent());
 		assertFalse(session.addFakePlayer(repeat('x', LootshareParticipant.MAX_DISPLAY_NAME_LENGTH + 1)).isPresent());
-		assertFalse(session.removeFakePlayer(CommunityLootshareDebugSession.DEBUG_OWNER_MEMBER_ID));
+		assertFalse(session.removeFakePlayer(DebugSession.DEBUG_OWNER_MEMBER_ID));
 		assertFalse(session.removeFakePlayer(123L));
 		assertTrue(session.removeFakePlayer(alice.get().getMemberId()));
 		assertEquals(2, session.snapshot().getParticipants().size());
@@ -169,7 +169,7 @@ public class CommunityLootshareDebugSessionTest
 		assertEquals(-150L, balanceFor(calculation, bob.getMemberId()).getNetValue());
 		assertEquals(45L, balanceFor(calculation, carol.getMemberId()).getNetValue());
 		assertEquals(105L,
-			balanceFor(calculation, CommunityLootshareDebugSession.DEBUG_OWNER_MEMBER_ID).getNetValue());
+			balanceFor(calculation, DebugSession.DEBUG_OWNER_MEMBER_ID).getNetValue());
 	}
 
 	@Test
@@ -188,7 +188,7 @@ public class CommunityLootshareDebugSessionTest
 			LootPreset preset = toaRewards[index];
 			long capturedValue = 10_000_000L + index;
 			LootProposal proposal = session.addSampleProposal(
-				CommunityLootshareDebugSession.DEBUG_OWNER_MEMBER_ID, preset, capturedValue).get();
+				DebugSession.DEBUG_OWNER_MEMBER_ID, preset, capturedValue).get();
 			SharedLootItem item = proposal.getEvent().getItems().get(0);
 
 			assertTrue(preset.usesItemPrice());
@@ -207,10 +207,10 @@ public class CommunityLootshareDebugSessionTest
 		session.startSimulation();
 		assertFalse(session.addSampleProposal(0L).isPresent());
 		assertFalse(session.addSampleProposal(-1L).isPresent());
-		assertFalse(session.addSampleProposal(CommunityLootshareDebugSession.MAX_SAMPLE_VALUE + 1L).isPresent());
+		assertFalse(session.addSampleProposal(DebugSession.MAX_SAMPLE_VALUE + 1L).isPresent());
 		assertFalse(session.addSampleProposal(123L, 1L).isPresent());
 		assertFalse(session.addSampleProposal(
-			CommunityLootshareDebugSession.DEBUG_OWNER_MEMBER_ID, null, 1L).isPresent());
+			DebugSession.DEBUG_OWNER_MEMBER_ID, null, 1L).isPresent());
 		assertEquals(MutationResult.NOT_FOUND, session.approveProposal("missing"));
 		assertEquals(MutationResult.NOT_FOUND, session.rejectProposal("missing"));
 

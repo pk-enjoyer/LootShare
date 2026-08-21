@@ -5,10 +5,10 @@
 
 package com.communitylootshare.ui.lootshare;
 
-import com.communitylootshare.debug.CommunityLootshareDebugSession;
-import com.communitylootshare.debug.CommunityLootshareDebugSession.LootPreset;
-import com.communitylootshare.ui.lootshare.CommunityLootsharePanelState.DebugState;
-import com.communitylootshare.ui.lootshare.CommunityLootsharePanelState.MemberLoot;
+import com.communitylootshare.debug.DebugSession;
+import com.communitylootshare.debug.DebugSession.LootPreset;
+import com.communitylootshare.ui.lootshare.PanelState.DebugState;
+import com.communitylootshare.ui.lootshare.PanelState.MemberLoot;
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Dimension;
@@ -31,12 +31,12 @@ import net.runelite.client.ui.FontManager;
 /**
  * Developer-mode controls for the isolated Community Lootshare simulation.
  */
-final class CommunityLootshareDebugPanel extends JPanel
+final class DebugPanel extends JPanel
 {
 	private static final Color SUCCESS_COLOR = new Color(110, 190, 110);
 	private static final Color ERROR_COLOR = new Color(220, 110, 110);
 
-	private final CommunityLootsharePanelActions actions;
+	private final PanelActions actions;
 	private final JButton simulationButton = new JButton("Start simulation");
 	private final JPanel simulationControls = new JPanel();
 	private final JTextField playerNameField = new JTextField();
@@ -46,7 +46,7 @@ final class CommunityLootshareDebugPanel extends JPanel
 	private final JComboBox<LootPreset> lootPresets = new JComboBox<>(LootPreset.values());
 	private final JComboBox<MemberChoice> lootOwners = new JComboBox<>();
 	private final JSpinner lootValue = new JSpinner(new SpinnerNumberModel(
-		500_000L, 1L, CommunityLootshareDebugSession.MAX_SAMPLE_VALUE, 50_000L));
+		500_000L, 1L, DebugSession.MAX_SAMPLE_VALUE, 50_000L));
 	private final JPanel lootValueControl;
 	private final JLabel itemPriceValue = new JLabel();
 	private final JPanel itemPriceControl;
@@ -57,7 +57,7 @@ final class CommunityLootshareDebugPanel extends JPanel
 	private boolean simulationActive;
 	private DebugState debugState = DebugState.unavailable();
 
-	CommunityLootshareDebugPanel(CommunityLootsharePanelActions actions)
+	DebugPanel(PanelActions actions)
 	{
 		this.actions = actions;
 		setLayout(new BorderLayout(0, 5));
@@ -159,7 +159,7 @@ final class CommunityLootshareDebugPanel extends JPanel
 		}
 	}
 
-	void render(CommunityLootsharePanelState state)
+	void render(PanelState state)
 	{
 		DebugState debug = state.getDebug();
 		debugState = debug;

@@ -13,10 +13,10 @@ import com.communitylootshare.domain.LootValueBasis;
 import com.communitylootshare.domain.MemberApprovalStatus;
 import com.communitylootshare.domain.SharedLootEvent;
 import com.communitylootshare.domain.SharedLootItem;
-import com.communitylootshare.integration.CommunityLootshareController;
+import com.communitylootshare.integration.LootshareController;
 import com.communitylootshare.ui.PopoutWindow;
 import com.communitylootshare.ui.PopoutWindowFactory;
-import com.communitylootshare.ui.lootshare.CommunityLootsharePanelState.MemberLoot;
+import com.communitylootshare.ui.lootshare.PanelState.MemberLoot;
 import java.awt.Dimension;
 import java.time.Instant;
 import java.util.Arrays;
@@ -46,15 +46,15 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-public class CommunityLootshareUiControllerTest
+public class UiControllerTest
 {
 	private Client client;
 	private ClientThread clientThread;
 	private PartyService partyService;
 	private ItemManager itemManager;
 	private PartyConfig partyConfig;
-	private CommunityLootshareController lootshareController;
-	private CommunityLootshareUiController controller;
+	private LootshareController lootshareController;
+	private UiController controller;
 
 	@Before
 	public void setUp()
@@ -64,12 +64,12 @@ public class CommunityLootshareUiControllerTest
 		partyService = mock(PartyService.class);
 		itemManager = mock(ItemManager.class);
 		partyConfig = mock(PartyConfig.class);
-		lootshareController = mock(CommunityLootshareController.class);
+		lootshareController = mock(LootshareController.class);
 		doAnswer(invocation -> {
 			((Runnable) invocation.getArgument(0)).run();
 			return null;
 		}).when(clientThread).invokeLater(any(Runnable.class));
-		controller = new CommunityLootshareUiController(
+		controller = new UiController(
 			client, clientThread, partyService, itemManager, lootshareController, null, partyConfig);
 	}
 
@@ -110,7 +110,7 @@ public class CommunityLootshareUiControllerTest
 			.decide(LootProposalStatus.REJECTED, Instant.ofEpochSecond(2), Collections.emptyList());
 		when(lootshareController.getActivePartyProposals()).thenReturn(Arrays.asList(rejected, accepted, pending));
 
-		CommunityLootsharePanelState state = controller.buildState();
+		PanelState state = controller.buildState();
 
 		assertTrue(state.isReady());
 		assertTrue(state.isInParty());
@@ -142,7 +142,7 @@ public class CommunityLootshareUiControllerTest
 	@Test
 	public void validatesAndNormalizesPartyActionsOnClientThread() throws Exception
 	{
-		CommunityLootsharePanel panel = mock(CommunityLootsharePanel.class);
+		Panel panel = mock(Panel.class);
 		when(partyService.isInParty()).thenReturn(false);
 		when(partyService.generatePassphrase()).thenReturn("generated-passphrase");
 		controller.start(panel);
@@ -178,7 +178,7 @@ public class CommunityLootshareUiControllerTest
 		when(lootshareController.isReady()).thenReturn(true);
 		when(partyService.isInParty()).thenReturn(false);
 
-		CommunityLootsharePanelState state = controller.buildState();
+		PanelState state = controller.buildState();
 
 		assertTrue(state.isReady());
 		assertFalse(state.isInParty());
@@ -190,9 +190,9 @@ public class CommunityLootshareUiControllerTest
 	public void reusesAndDisposesTheSettlementDashboardWindow() throws Exception
 	{
 		RecordingWindowFactory windows = new RecordingWindowFactory();
-		CommunityLootshareUiController popoutController = new CommunityLootshareUiController(
+		UiController popoutController = new UiController(
 			client, clientThread, partyService, itemManager, lootshareController, null, partyConfig, windows);
-		CommunityLootsharePanel target = mock(CommunityLootsharePanel.class);
+		Panel target = mock(Panel.class);
 		when(lootshareController.isReady()).thenReturn(true);
 		when(partyService.isInParty()).thenReturn(false);
 		popoutController.start(target);
@@ -204,12 +204,12 @@ public class CommunityLootshareUiControllerTest
 		});
 		assertEquals(1, windows.openCount);
 		assertEquals(1, windows.window.focusCount);
-		assertTrue(((CommunityLootshareSettlementDashboard) windows.content).isRefreshTimerRunning());
+		assertTrue(((SettlementDashboard) windows.content).isRefreshTimerRunning());
 
 		popoutController.stop();
 		SwingUtilities.invokeAndWait(() -> { });
 		assertTrue(windows.window.disposed);
-		assertFalse(((CommunityLootshareSettlementDashboard) windows.content).isRefreshTimerRunning());
+		assertFalse(((SettlementDashboard) windows.content).isRefreshTimerRunning());
 	}
 
 	@Test
@@ -219,7 +219,7 @@ public class CommunityLootshareUiControllerTest
 		when(partyService.isInParty()).thenReturn(false);
 		when(partyConfig.previousPartyId()).thenReturn("previous-party");
 
-		CommunityLootsharePanelState state = controller.buildState();
+		PanelState state = controller.buildState();
 
 		assertTrue(state.isPreviousPartyAvailable());
 	}
@@ -227,7 +227,7 @@ public class CommunityLootshareUiControllerTest
 	@Test
 	public void ignoresMissingOrInvalidPreviousPartyPassphrases()
 	{
-		controller.start(mock(CommunityLootsharePanel.class));
+		controller.start(mock(Panel.class));
 		when(partyService.isInParty()).thenReturn(false);
 
 		when(partyConfig.previousPartyId()).thenReturn(null, "", "bad passphrase!");

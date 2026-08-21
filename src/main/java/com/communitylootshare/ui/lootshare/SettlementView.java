@@ -5,9 +5,9 @@
 
 package com.communitylootshare.ui.lootshare;
 
-import com.communitylootshare.ui.lootshare.CommunityLootsharePanelState.BalanceRow;
-import com.communitylootshare.ui.lootshare.CommunityLootsharePanelState.SettlementState;
-import com.communitylootshare.ui.lootshare.CommunityLootsharePanelState.TransferRow;
+import com.communitylootshare.ui.lootshare.PanelState.BalanceRow;
+import com.communitylootshare.ui.lootshare.PanelState.SettlementState;
+import com.communitylootshare.ui.lootshare.PanelState.TransferRow;
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.GridBagConstraints;
@@ -28,14 +28,14 @@ import net.runelite.client.util.QuantityFormatter;
 /**
  * Shared settlement balances/payments renderer for the sidebar and popout.
  */
-public final class CommunityLootshareSettlementView extends JPanel
+public final class SettlementView extends JPanel
 {
 	private static final Color POSITIVE_COLOR = new Color(110, 190, 110);
 	private static final Color NEGATIVE_COLOR = new Color(220, 110, 110);
 
 	private final JPanel content = new JPanel();
 
-	public CommunityLootshareSettlementView()
+	public SettlementView()
 	{
 		setLayout(new BorderLayout());
 		setOpaque(false);

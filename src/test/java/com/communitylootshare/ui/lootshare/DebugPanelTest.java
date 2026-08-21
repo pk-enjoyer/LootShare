@@ -5,9 +5,9 @@
 
 package com.communitylootshare.ui.lootshare;
 
-import com.communitylootshare.debug.CommunityLootshareDebugSession.LootPreset;
-import com.communitylootshare.ui.lootshare.CommunityLootsharePanelState.DebugState;
-import com.communitylootshare.ui.lootshare.CommunityLootsharePanelState.MemberLoot;
+import com.communitylootshare.debug.DebugSession.LootPreset;
+import com.communitylootshare.ui.lootshare.PanelState.DebugState;
+import com.communitylootshare.ui.lootshare.PanelState.MemberLoot;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.EnumMap;
@@ -19,17 +19,17 @@ import static org.junit.Assert.assertTrue;
 import org.junit.Before;
 import org.junit.Test;
 
-public class CommunityLootshareDebugPanelTest
+public class DebugPanelTest
 {
 	private RecordingActions actions;
-	private CommunityLootshareDebugPanel panel;
+	private DebugPanel panel;
 
 	@Before
 	public void setUp() throws Exception
 	{
 		actions = new RecordingActions();
-		AtomicReference<CommunityLootshareDebugPanel> created = new AtomicReference<>();
-		SwingUtilities.invokeAndWait(() -> created.set(new CommunityLootshareDebugPanel(actions)));
+		AtomicReference<DebugPanel> created = new AtomicReference<>();
+		SwingUtilities.invokeAndWait(() -> created.set(new DebugPanel(actions)));
 		panel = created.get();
 	}
 
@@ -123,9 +123,9 @@ public class CommunityLootshareDebugPanelTest
 		});
 	}
 
-	private static CommunityLootsharePanelState state(DebugState debug, java.util.List<MemberLoot> members)
+	private static PanelState state(DebugState debug, java.util.List<MemberLoot> members)
 	{
-		return new CommunityLootsharePanelState(true, debug.isSimulationActive(), null, members, debug);
+		return new PanelState(true, debug.isSimulationActive(), null, members, debug);
 	}
 
 	private static MemberLoot member(long memberId, String name, boolean local)
@@ -134,7 +134,7 @@ public class CommunityLootshareDebugPanelTest
 			0, 0, 0L, Collections.emptyList());
 	}
 
-	private static final class RecordingActions implements CommunityLootsharePanelActions
+	private static final class RecordingActions implements PanelActions
 	{
 		private int startCount;
 		private int stopCount;

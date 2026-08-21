@@ -5,7 +5,7 @@
 
 package com.communitylootshare.sessions;
 
-import com.communitylootshare.domain.CommunityLootshareState;
+import com.communitylootshare.domain.LootshareState;
 import com.communitylootshare.domain.LootProposal;
 import com.communitylootshare.domain.LootProposalStatus;
 import com.communitylootshare.domain.LootshareParticipant;
@@ -24,7 +24,7 @@ import lombok.extern.slf4j.Slf4j;
 
 @Singleton
 @Slf4j
-public class CommunityLootshareEngine
+public class LootshareEngine
 {
 	public static final int MAX_PROPOSALS = 2048;
 	public static final int MAX_SESSIONS = 256;
@@ -33,7 +33,7 @@ public class CommunityLootshareEngine
 	private final List<LootshareSession> sessions = new ArrayList<>();
 	private String activeSessionId;
 
-	public synchronized void restore(CommunityLootshareState state)
+	public synchronized void restore(LootshareState state)
 	{
 		proposals.clear();
 		sessions.clear();
@@ -101,10 +101,10 @@ public class CommunityLootshareEngine
 		}
 	}
 
-	public synchronized CommunityLootshareState snapshot()
+	public synchronized LootshareState snapshot()
 	{
-		CommunityLootshareState state = new CommunityLootshareState();
-		state.setSchemaVersion(CommunityLootshareState.CURRENT_SCHEMA_VERSION);
+		LootshareState state = new LootshareState();
+		state.setSchemaVersion(LootshareState.CURRENT_SCHEMA_VERSION);
 		state.setActiveSessionId(activeSessionId);
 		List<LootProposal> proposalCopies = new ArrayList<>(proposals.size());
 		for (LootProposal proposal : proposals.values())

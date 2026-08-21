@@ -5,9 +5,9 @@
 
 package com.communitylootshare.integration;
 
-import com.communitylootshare.CommunityLootshareConfig;
+import com.communitylootshare.LootshareConfig;
 import com.communitylootshare.capture.LootCaptureService;
-import com.communitylootshare.domain.CommunityLootshareState;
+import com.communitylootshare.domain.LootshareState;
 import com.communitylootshare.domain.LootProposal;
 import com.communitylootshare.domain.LootProposalStatus;
 import com.communitylootshare.domain.LootshareCalculation;
@@ -16,13 +16,13 @@ import com.communitylootshare.domain.LootshareSession;
 import com.communitylootshare.domain.LootshareSettings;
 import com.communitylootshare.domain.MemberApprovalStatus;
 import com.communitylootshare.domain.SharedLootEvent;
-import com.communitylootshare.party.CommunityLootshareDecisionMessage;
-import com.communitylootshare.party.CommunityLootshareHostMessage;
-import com.communitylootshare.party.CommunityLootshareProposalMessage;
-import com.communitylootshare.persistence.CommunityLootshareStorage;
-import com.communitylootshare.sessions.CommunityLootshareEngine;
-import com.communitylootshare.sessions.CommunityLootshareEngine.DecisionOutcome;
-import com.communitylootshare.sessions.CommunityLootshareEngine.MutationResult;
+import com.communitylootshare.party.DecisionMessage;
+import com.communitylootshare.party.HostMessage;
+import com.communitylootshare.party.ProposalMessage;
+import com.communitylootshare.persistence.LootshareStorage;
+import com.communitylootshare.sessions.LootshareEngine;
+import com.communitylootshare.sessions.LootshareEngine.DecisionOutcome;
+import com.communitylootshare.sessions.LootshareEngine.MutationResult;
 import com.communitylootshare.sessions.LootshareCalculator;
 import java.io.File;
 import java.time.Instant;
@@ -65,7 +65,7 @@ import net.runelite.http.api.loottracker.LootRecordType;
 
 @Singleton
 @Slf4j
-public class CommunityLootshareController
+public class LootshareController
 {
 	private static final int MAX_DEFERRED_ACTIONS = 256;
 	private static final Pattern PICKPOCKET_PATTERN = Pattern.compile("You pick (the )?.+'s? pocket.*");
@@ -74,12 +74,12 @@ public class CommunityLootshareController
 	private final Client client;
 	private final ClientThread clientThread;
 	private final PartyService partyService;
-	private final CommunityLootshareConfig config;
+	private final LootshareConfig config;
 	private final ScheduledExecutorService executor;
 	private final LootCaptureService captureService;
-	private final CommunityLootshareEngine engine;
+	private final LootshareEngine engine;
 	private final LootshareCalculator calculator;
-	private final CommunityLootshareStorage storage;
+	private final LootshareStorage storage;
 	private final Object lifecycleLock = new Object();
 	private final Object saveLock = new Object();
 	private final Deque<Runnable> deferredActions = new ArrayDeque<>();
@@ -97,11 +97,11 @@ public class CommunityLootshareController
 	private File activeFile;
 
 	@Inject
-	public CommunityLootshareController(Client client, ClientThread clientThread, PartyService partyService,
-	                                    CommunityLootshareConfig config, ScheduledExecutorService executor,
+	public LootshareController(Client client, ClientThread clientThread, PartyService partyService,
+	                                    LootshareConfig config, ScheduledExecutorService executor,
 	                                    LootCaptureService captureService,
-	                                    CommunityLootshareEngine engine, LootshareCalculator calculator,
-	                                    CommunityLootshareStorage storage)
+	                                    LootshareEngine engine, LootshareCalculator calculator,
+	                                    LootshareStorage storage)
 	{
 		this.client = client;
 		this.clientThread = clientThread;
@@ -294,14 +294,14 @@ public class CommunityLootshareController
 		return getActiveHostSettings().orElse(null);
 	}
 
-	public void onProposalMessage(CommunityLootshareProposalMessage message)
+	public void onProposalMessage(ProposalMessage message)
 	{
 		if (message == null || !partyService.isInParty()
 			|| partyService.getMemberById(message.getMemberId()) == null)
 		{
 			return;
 		}
-		Optional<CommunityLootshareProposalMessage.DecodedProposal> decoded =
+		Optional<ProposalMessage.DecodedProposal> decoded =
 			message.decodeWithMetadata(partyService.getPartyId());
 		decoded.ifPresent(envelope -> executeWhenReady(() -> {
 			LootProposal proposal = envelope.getProposal();
@@ -325,14 +325,14 @@ public class CommunityLootshareController
 		}));
 	}
 
-	public void onDecisionMessage(CommunityLootshareDecisionMessage message)
+	public void onDecisionMessage(DecisionMessage message)
 	{
 		if (message == null || !partyService.isInParty()
 			|| partyService.getMemberById(message.getMemberId()) == null)
 		{
 			return;
 		}
-		Optional<CommunityLootshareDecisionMessage.DecodedDecision> decoded = message.decode();
+		Optional<DecisionMessage.DecodedDecision> decoded = message.decode();
 		decoded.ifPresent(decision -> executeWhenReady(() -> {
 			DecisionOutcome outcome = engine.decide(decision.getProposalId(), message.getMemberId(),
 				decision.getStatus(), decision.getDecidedAt(), decision.getParticipants());
@@ -344,14 +344,14 @@ public class CommunityLootshareController
 		}));
 	}
 
-	public void onHostMessage(CommunityLootshareHostMessage message)
+	public void onHostMessage(HostMessage message)
 	{
 		if (message == null || !partyService.isInParty()
 			|| partyService.getMemberById(message.getMemberId()) == null)
 		{
 			return;
 		}
-		Optional<CommunityLootshareHostMessage.DecodedHostState> decoded = message.decode();
+		Optional<HostMessage.DecodedHostState> decoded = message.decode();
 		decoded.ifPresent(hostState -> executeWhenReady(() -> {
 			if (!partyService.isInParty()
 				|| engine.getActivePartyId() != partyService.getPartyId()
@@ -538,10 +538,10 @@ public class CommunityLootshareController
 		sendCurrentHostState();
 		for (LootProposal proposal : engine.getProposalsForActiveParty())
 		{
-			partyService.send(new CommunityLootshareProposalMessage(proposal));
+			partyService.send(new ProposalMessage(proposal));
 			if (proposal.getStatus() != LootProposalStatus.PENDING)
 			{
-				partyService.send(new CommunityLootshareDecisionMessage(proposal));
+				partyService.send(new DecisionMessage(proposal));
 			}
 		}
 	}
@@ -646,7 +646,7 @@ public class CommunityLootshareController
 			hostSettingsSynchronized = true;
 			queueCurrentStateForSave();
 			engine.getActiveHostSettings().ifPresent(settings -> partyService.send(
-				new CommunityLootshareHostMessage(nextHostMemberId, settings, revision,
+				new HostMessage(nextHostMemberId, settings, revision,
 					engine.getActiveMemberApprovalStatuses())));
 			notifyStateChanged();
 		}
@@ -799,7 +799,7 @@ public class CommunityLootshareController
 		if (outcome.getResult() == MutationResult.APPLIED)
 		{
 			queueCurrentStateForSave();
-			partyService.send(new CommunityLootshareDecisionMessage(outcome.getProposal()));
+			partyService.send(new DecisionMessage(outcome.getProposal()));
 			notifyStateChanged();
 		}
 		return outcome.getResult();
@@ -879,7 +879,7 @@ public class CommunityLootshareController
 				decisionTime, roster);
 			if (outcome.getResult() == MutationResult.APPLIED)
 			{
-				partyService.send(new CommunityLootshareDecisionMessage(outcome.getProposal()));
+				partyService.send(new DecisionMessage(outcome.getProposal()));
 				changed = true;
 			}
 		}
@@ -1025,17 +1025,17 @@ public class CommunityLootshareController
 			return;
 		}
 		engine.getActiveHostSettings().ifPresent(settings -> partyService.send(
-			new CommunityLootshareHostMessage(hostMemberId, settings, revision,
+			new HostMessage(hostMemberId, settings, revision,
 				engine.getActiveMemberApprovalStatuses())));
 	}
 
 	private LootshareSettings configuredSettings()
 	{
 		int configuredValue = config == null
-			? CommunityLootshareConfig.DEFAULT_MINIMUM_SHARED_LOOT_VALUE
+			? LootshareConfig.DEFAULT_MINIMUM_SHARED_LOOT_VALUE
 			: config.minimumSharedLootValue();
 		long minimumSharedLootValue = configuredValue < 0
-			? CommunityLootshareConfig.DEFAULT_MINIMUM_SHARED_LOOT_VALUE
+			? LootshareConfig.DEFAULT_MINIMUM_SHARED_LOOT_VALUE
 			: configuredValue;
 		if (config == null)
 		{
@@ -1075,7 +1075,7 @@ public class CommunityLootshareController
 		}
 		if (engine.addProposal(proposal) == MutationResult.APPLIED)
 		{
-			partyService.send(new CommunityLootshareProposalMessage(proposal, manualGp));
+			partyService.send(new ProposalMessage(proposal, manualGp));
 			resolvePendingProposalsAsHost();
 			queueCurrentStateForSave();
 			notifyStateChanged();
@@ -1113,7 +1113,7 @@ public class CommunityLootshareController
 		try
 		{
 			executor.execute(() -> {
-				CommunityLootshareStorage.LoadResult result = storage.load(file);
+				LootshareStorage.LoadResult result = storage.load(file);
 				clientThread.invokeLater(() -> completeLoad(generation, file, result));
 			});
 		}
@@ -1123,7 +1123,7 @@ public class CommunityLootshareController
 		}
 	}
 
-	private void completeLoad(int generation, File file, CommunityLootshareStorage.LoadResult result)
+	private void completeLoad(int generation, File file, LootshareStorage.LoadResult result)
 	{
 		List<Runnable> queued;
 		synchronized (lifecycleLock)
@@ -1283,9 +1283,9 @@ public class CommunityLootshareController
 	private static final class SaveRequest
 	{
 		private final File file;
-		private final CommunityLootshareState state;
+		private final LootshareState state;
 
-		private SaveRequest(File file, CommunityLootshareState state)
+		private SaveRequest(File file, LootshareState state)
 		{
 			this.file = file;
 			this.state = state;

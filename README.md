@@ -14,7 +14,7 @@ payments needed to settle a shared session.
 
 The active Community Lootshare implementation provides:
 
-- a loadable `CommunityLootsharePlugin` entry point and the stable
+- a loadable `LootsharePlugin` entry point and the stable
   `community-lootshare` config group;
 - host-filtered NPC-drop capture from RuneLite's `ServerNpcLoot` event while the
   local player is in a RuneLite Party, plus `LootReceived` capture for RuneLite's
@@ -104,6 +104,6 @@ env JAVA_HOME=/usr/lib/jvm/java-21-temurin-jdk ./gradlew run
 ```
 
 `./gradlew run` starts RuneLite in developer/debug mode with assertions enabled,
-loads `com.communitylootshare.CommunityLootsharePlugin`, and exercises the
+loads `com.communitylootshare.LootsharePlugin`, and exercises the
 active event/Party/persistence/UI boundary. It does not automate login or
 gameplay.

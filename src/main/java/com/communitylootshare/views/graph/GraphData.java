@@ -22,13 +22,13 @@ import java.util.stream.Collectors;
 /**
  * Adapts active Community Lootshare snapshots to the retained graph renderer.
  */
-public final class CommunityLootshareGraphData
+public final class GraphData
 {
 	private static final int MAX_BAR_ENTRIES = 12;
 	private static final DateTimeFormatter LOCAL_TIME = DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT)
 		.withZone(ZoneId.systemDefault());
 
-	private CommunityLootshareGraphData()
+	private GraphData()
 	{
 	}
 

@@ -5,7 +5,7 @@
 
 package com.communitylootshare.sessions;
 
-import com.communitylootshare.domain.CommunityLootshareState;
+import com.communitylootshare.domain.LootshareState;
 import com.communitylootshare.domain.LootProposal;
 import com.communitylootshare.domain.LootProposalStatus;
 import com.communitylootshare.domain.LootshareParticipant;
@@ -15,8 +15,8 @@ import com.communitylootshare.domain.LootValueBasis;
 import com.communitylootshare.domain.MemberApprovalStatus;
 import com.communitylootshare.domain.SharedLootEvent;
 import com.communitylootshare.domain.SharedLootItem;
-import com.communitylootshare.sessions.CommunityLootshareEngine.DecisionOutcome;
-import com.communitylootshare.sessions.CommunityLootshareEngine.MutationResult;
+import com.communitylootshare.sessions.LootshareEngine.DecisionOutcome;
+import com.communitylootshare.sessions.LootshareEngine.MutationResult;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -28,12 +28,12 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import org.junit.Test;
 
-public class CommunityLootshareEngineTest
+public class LootshareEngineTest
 {
 	@Test
 	public void hostControlsVersionedMemberEligibilityAndSnapshotsIt()
 	{
-		CommunityLootshareEngine engine = new CommunityLootshareEngine();
+		LootshareEngine engine = new LootshareEngine();
 		assertEquals(MutationResult.NO_ACTIVE_SESSION,
 			engine.updateMemberApprovalStatus(1L, 2L, MemberApprovalStatus.APPROVED, 1L));
 		assertEquals(MutationResult.APPLIED, engine.enterParty(10L, "eligibility", Instant.EPOCH));
@@ -51,7 +51,7 @@ public class CommunityLootshareEngineTest
 			engine.updateMemberApprovalStatus(1L, 2L, MemberApprovalStatus.EXCLUDED, 3L));
 		assertEquals(MemberApprovalStatus.EXCLUDED, engine.getActiveMemberApprovalStatus(2L));
 
-		CommunityLootshareEngine restored = new CommunityLootshareEngine();
+		LootshareEngine restored = new LootshareEngine();
 		restored.restore(engine.snapshot());
 		assertEquals(MemberApprovalStatus.APPROVED, restored.getActiveMemberApprovalStatus(1L));
 		assertEquals(MemberApprovalStatus.EXCLUDED, restored.getActiveMemberApprovalStatus(2L));
@@ -69,7 +69,7 @@ public class CommunityLootshareEngineTest
 	@Test
 	public void enforcesOwnerApprovalDeduplicationAndFinalDecisionConflicts()
 	{
-		CommunityLootshareEngine engine = new CommunityLootshareEngine();
+		LootshareEngine engine = new LootshareEngine();
 		assertEquals(0L, engine.getActivePartyId());
 		assertEquals(MutationResult.NO_ACTIVE_SESSION, engine.addProposal(pending("p1", 10L, 1L, 100L)));
 		assertEquals(MutationResult.INVALID, engine.addProposal(null));
@@ -114,7 +114,7 @@ public class CommunityLootshareEngineTest
 	@Test
 	public void rejectsAndPersistsProposalsWhileSessionsFollowPartyLifecycle()
 	{
-		CommunityLootshareEngine engine = new CommunityLootshareEngine();
+		LootshareEngine engine = new LootshareEngine();
 		assertEquals(MutationResult.DUPLICATE, engine.leaveParty(Instant.EPOCH));
 		assertEquals(MutationResult.APPLIED, engine.enterParty(10L, "first", Instant.EPOCH));
 		assertEquals(MutationResult.APPLIED, engine.updateHostState(1L, 1L, 0L, 1L));
@@ -141,7 +141,7 @@ public class CommunityLootshareEngineTest
 	@Test
 	public void invalidSessionTimesDoNotCorruptTheActiveSession()
 	{
-		CommunityLootshareEngine engine = new CommunityLootshareEngine();
+		LootshareEngine engine = new LootshareEngine();
 		assertEquals(MutationResult.INVALID, engine.enterParty(0L, "session", Instant.EPOCH));
 		assertEquals(MutationResult.INVALID, engine.enterParty(1L, null, Instant.EPOCH));
 		assertEquals(MutationResult.INVALID, engine.enterParty(1L, "session", null));
@@ -158,7 +158,7 @@ public class CommunityLootshareEngineTest
 	@Test
 	public void enforcesVersionedHostAuthorityTransfersAndVacancyRecovery()
 	{
-		CommunityLootshareEngine engine = new CommunityLootshareEngine();
+		LootshareEngine engine = new LootshareEngine();
 		assertEquals(0L, engine.getActiveHostMemberId());
 		assertEquals(0L, engine.getActiveMinimumSharedLootValue());
 		assertEquals(0L, engine.getActiveHostRevision());
@@ -218,19 +218,19 @@ public class CommunityLootshareEngineTest
 	@Test
 	public void snapshotRestorePreservesValidatedActiveStateAndHandlesNullCollections()
 	{
-		CommunityLootshareEngine source = new CommunityLootshareEngine();
+		LootshareEngine source = new LootshareEngine();
 		source.enterParty(10L, "s", Instant.EPOCH);
 		source.updateHostState(1L, 1L, 100_000L, 1L);
 		source.addProposal(pending("p", 10L, 1L, 100L));
 		source.decide("p", 1L, LootProposalStatus.ACCEPTED, Instant.ofEpochSecond(1), roster(1L, 2L));
 
-		CommunityLootshareState snapshot = source.snapshot();
-		assertEquals(CommunityLootshareState.CURRENT_SCHEMA_VERSION, snapshot.getSchemaVersion());
+		LootshareState snapshot = source.snapshot();
+		assertEquals(LootshareState.CURRENT_SCHEMA_VERSION, snapshot.getSchemaVersion());
 		assertEquals("s", snapshot.getActiveSessionId());
 		assertEquals(1, snapshot.getProposals().size());
 		assertEquals(1, snapshot.getSessions().size());
 
-		CommunityLootshareEngine restored = new CommunityLootshareEngine();
+		LootshareEngine restored = new LootshareEngine();
 		restored.restore(snapshot);
 		assertEquals(10L, restored.getActivePartyId());
 		assertEquals(LootProposalStatus.ACCEPTED, restored.getProposal("p").get().getStatus());
@@ -239,7 +239,7 @@ public class CommunityLootshareEngineTest
 		assertEquals(100_000L, restored.getActiveMinimumSharedLootValue());
 		assertEquals(1L, restored.getActiveHostRevision());
 
-		CommunityLootshareState malformed = new CommunityLootshareState();
+		LootshareState malformed = new LootshareState();
 		malformed.setSchemaVersion(7);
 		malformed.setProposals(Arrays.asList(null, pending("valid", 10L, 1L, 1L)));
 		malformed.setSessions(Arrays.asList(null, new LootshareSession("valid-session", 10L, Instant.EPOCH)));
@@ -259,9 +259,9 @@ public class CommunityLootshareEngineTest
 	@Test
 	public void proposalAndSessionLimitsAreBounded()
 	{
-		CommunityLootshareEngine engine = new CommunityLootshareEngine();
+		LootshareEngine engine = new LootshareEngine();
 		engine.enterParty(10L, "s", Instant.EPOCH);
-		for (int index = 0; index < CommunityLootshareEngine.MAX_PROPOSALS; index++)
+		for (int index = 0; index < LootshareEngine.MAX_PROPOSALS; index++)
 		{
 			assertEquals(MutationResult.APPLIED,
 				engine.addProposal(pending("p" + index, 10L, 1L, 1L)));
@@ -269,9 +269,9 @@ public class CommunityLootshareEngineTest
 		assertEquals(MutationResult.LIMIT_REACHED,
 			engine.addProposal(pending("overflow", 10L, 1L, 1L)));
 
-		CommunityLootshareState allActive = new CommunityLootshareState();
+		LootshareState allActive = new LootshareState();
 		List<LootshareSession> sessions = new ArrayList<>();
-		for (int index = 0; index < CommunityLootshareEngine.MAX_SESSIONS; index++)
+		for (int index = 0; index < LootshareEngine.MAX_SESSIONS; index++)
 		{
 			sessions.add(new LootshareSession("s" + index, index + 1L, Instant.EPOCH));
 		}
@@ -280,14 +280,14 @@ public class CommunityLootshareEngineTest
 		assertEquals(MutationResult.LIMIT_REACHED,
 			engine.enterParty(999L, "new", Instant.ofEpochSecond(1)));
 
-		CommunityLootshareEngine pruning = new CommunityLootshareEngine();
-		for (int index = 0; index < CommunityLootshareEngine.MAX_SESSIONS; index++)
+		LootshareEngine pruning = new LootshareEngine();
+		for (int index = 0; index < LootshareEngine.MAX_SESSIONS; index++)
 		{
 			pruning.enterParty(index + 1L, "s" + index, Instant.ofEpochSecond(index));
 		}
 		assertEquals(MutationResult.APPLIED,
 			pruning.enterParty(999L, "replacement", Instant.ofEpochSecond(999)));
-		assertEquals(CommunityLootshareEngine.MAX_SESSIONS, pruning.getHistory().size());
+		assertEquals(LootshareEngine.MAX_SESSIONS, pruning.getHistory().size());
 	}
 
 	private static LootProposal pending(String id, long partyId, long ownerId, long value)
