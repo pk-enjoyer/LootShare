@@ -63,6 +63,13 @@ import net.runelite.client.plugins.loottracker.LootReceived;
 import net.runelite.client.util.Text;
 import net.runelite.http.api.loottracker.LootRecordType;
 
+/**
+ * Coordinates RuneLite events, Party transport, persistence, and the lootshare domain state.
+ *
+ * <p>Client-thread events may arrive before the profile has loaded, so state-changing work is
+ * deferred until ready. Disk work is performed by the injected executor, never on the client
+ * thread.</p>
+ */
 @Singleton
 @Slf4j
 public class LootshareController
@@ -132,6 +139,7 @@ public class LootshareController
 		}
 	}
 
+	/** Starts asynchronous loading for the current RuneLite configuration profile. */
 	public void start()
 	{
 		synchronized (lifecycleLock)
@@ -145,6 +153,7 @@ public class LootshareController
 		loadProfile(storage.resolveCurrentFile());
 	}
 
+	/** Queues the current state for saving and prevents late async work from changing stopped state. */
 	public void stop()
 	{
 		queueCurrentStateForSave();
@@ -166,6 +175,7 @@ public class LootshareController
 		} : stateChangeListener;
 	}
 
+	/** Saves the outgoing profile and begins loading state for the newly selected profile. */
 	public void onProfileChanged()
 	{
 		File nextFile = storage.resolveCurrentFile();
@@ -186,6 +196,7 @@ public class LootshareController
 		loadProfile(nextFile);
 	}
 
+	/** Captures a Loot Tracker event only when the synchronized host policy enables its source type. */
 	public void onLootReceived(LootReceived received)
 	{
 		if (received == null)
@@ -208,6 +219,7 @@ public class LootshareController
 		captureLocalLoot(sourceLabel, received.getItems(), settings);
 	}
 
+	/** Marks pickpocket chat so its duplicate NPC-loot delivery is ignored for the current tick. */
 	public void onChatMessage(ChatMessage event)
 	{
 		if (event == null)
@@ -225,6 +237,7 @@ public class LootshareController
 		}
 	}
 
+	/** Captures direct NPC loot, allowing the plugin to work even when Loot Tracker is disabled. */
 	public void onServerNpcLoot(ServerNpcLoot received)
 	{
 		if (received == null || received.getComposition() == null
@@ -294,6 +307,10 @@ public class LootshareController
 		return getActiveHostSettings().orElse(null);
 	}
 
+	/**
+	 * Decodes and records a Party proposal after validating the transport sender and manual-GP
+	 * authority. The active host then resolves eligible pending proposals.
+	 */
 	public void onProposalMessage(ProposalMessage message)
 	{
 		if (message == null || !partyService.isInParty()
@@ -325,6 +342,7 @@ public class LootshareController
 		}));
 	}
 
+	/** Applies a final host decision received through Party transport. */
 	public void onDecisionMessage(DecisionMessage message)
 	{
 		if (message == null || !partyService.isInParty()
@@ -344,6 +362,7 @@ public class LootshareController
 		}));
 	}
 
+	/** Applies a revisioned host-policy snapshot and then re-evaluates pending proposals. */
 	public void onHostMessage(HostMessage message)
 	{
 		if (message == null || !partyService.isInParty()
@@ -494,6 +513,9 @@ public class LootshareController
 		onLocalConfigurationChanged();
 	}
 
+	/**
+	 * Starts or ends the matching Party session and requests state synchronization after joining.
+	 */
 	public void onPartyChanged(PartyChanged event)
 	{
 		captureService.resetDeduplication();
@@ -518,6 +540,7 @@ public class LootshareController
 		});
 	}
 
+	/** Responds to a Party sync request by sending the current host policy and proposal history. */
 	public void onUserSync(UserSync sync)
 	{
 		if (sync == null || !isReady() || !partyService.isInParty())
@@ -580,6 +603,10 @@ public class LootshareController
 		return isReady() ? engine.getActiveSession() : Optional.empty();
 	}
 
+	/**
+	 * Returns a calculation only after the active Party has synchronized a valid host policy;
+	 * guests must never calculate against their local preferences.
+	 */
 	public LootshareCalculation getActiveCalculation()
 	{
 		if (!isReady() || !getActiveHostSettings().isPresent())
@@ -1067,6 +1094,10 @@ public class LootshareController
 		recordLocalProposal(proposal, false);
 	}
 
+	/**
+	 * Converts a locally captured proposal into shared Party state, broadcasts it, and lets the host
+	 * publish any resulting final decision.
+	 */
 	private void recordLocalProposal(LootProposal proposal, boolean manualGp)
 	{
 		if (!partyService.isInParty() || partyService.getPartyId() != proposal.getPartyId())
@@ -1090,6 +1121,7 @@ public class LootshareController
 		}
 	}
 
+	/** Loads storage on the executor and returns its result to the client thread with a generation guard. */
 	private void loadProfile(File file)
 	{
 		final int generation;
@@ -1201,6 +1233,7 @@ public class LootshareController
 		}
 	}
 
+	/** Coalesces snapshots by file so rapid state changes do not create unbounded disk writes. */
 	private void queueCurrentStateForSave()
 	{
 		File file;

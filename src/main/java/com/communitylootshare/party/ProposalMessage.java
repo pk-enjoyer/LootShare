@@ -15,6 +15,12 @@ import java.util.List;
 import java.util.Optional;
 import net.runelite.client.party.messages.PartyMemberMessage;
 
+/**
+ * Party wire payload for a pending captured-loot or manual-GP proposal.
+ *
+ * <p>The RuneLite Party message sender is authoritative; decoding never trusts a serialized sender
+ * ID to identify the transport origin.</p>
+ */
 public class ProposalMessage extends PartyMemberMessage
 {
 	public static final int PROTOCOL_VERSION = 2;
@@ -56,6 +62,10 @@ public class ProposalMessage extends PartyMemberMessage
 		}
 	}
 
+	/**
+	 * Validates this untrusted wire payload and returns the immutable proposal plus its manual-GP
+	 * marker. Version 1 is accepted for backwards compatibility.
+	 */
 	public Optional<DecodedProposal> decodeWithMetadata(long partyId)
 	{
 		if ((protocolVersion != 1 && protocolVersion != PROTOCOL_VERSION) || getMemberId() <= 0L || partyId <= 0L

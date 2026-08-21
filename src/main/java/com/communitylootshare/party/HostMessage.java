@@ -113,6 +113,10 @@ public class HostMessage extends PartyMemberMessage
 		return validated;
 	}
 
+	/**
+	 * Validates a host policy snapshot received through Party transport. Versions 3 and 4 are
+	 * understood so existing Parties can migrate without losing authority state.
+	 */
 	public Optional<DecodedHostState> decode()
 	{
 		if ((protocolVersion != 3 && protocolVersion != PROTOCOL_VERSION) || getMemberId() <= 0L

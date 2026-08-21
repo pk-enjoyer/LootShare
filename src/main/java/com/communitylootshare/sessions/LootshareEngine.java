@@ -22,6 +22,12 @@ import java.util.Optional;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
 
+/**
+ * Thread-safe owner of Community Lootshare proposals and Party session history.
+ *
+ * <p>This is the authority boundary for host revisions, proposal decisions, duplicate detection,
+ * and bounded persistence state. Callers receive snapshots rather than mutable internals.</p>
+ */
 @Singleton
 @Slf4j
 public class LootshareEngine
@@ -33,6 +39,7 @@ public class LootshareEngine
 	private final List<LootshareSession> sessions = new ArrayList<>();
 	private String activeSessionId;
 
+	/** Restores only structurally valid, bounded entries; malformed persisted entries are skipped. */
 	public synchronized void restore(LootshareState state)
 	{
 		proposals.clear();
@@ -101,6 +108,7 @@ public class LootshareEngine
 		}
 	}
 
+	/** Returns a deep persistence snapshot of all retained proposals and sessions. */
 	public synchronized LootshareState snapshot()
 	{
 		LootshareState state = new LootshareState();
@@ -121,6 +129,10 @@ public class LootshareEngine
 		return state;
 	}
 
+	/**
+	 * Starts a Party session, ending any active session first. Re-entering the same Party is a
+	 * duplicate rather than a new session.
+	 */
 	public synchronized MutationResult enterParty(long partyId, String newSessionId, Instant at)
 	{
 		final LootshareSession nextSession;
@@ -159,6 +171,7 @@ public class LootshareEngine
 		return MutationResult.APPLIED;
 	}
 
+	/** Ends the active Party session, if one exists. */
 	public synchronized MutationResult leaveParty(Instant at)
 	{
 		LootshareSession active = activeSession();
@@ -178,6 +191,10 @@ public class LootshareEngine
 		return MutationResult.APPLIED;
 	}
 
+	/**
+	 * Applies a complete host policy snapshot when it is authorized and has a non-conflicting
+	 * revision. The first host may claim an unhosted session; later updates require the current host.
+	 */
 	public synchronized MutationResult updateHostState(long actingMemberId, long nextHostMemberId,
 	                                                   long minimumSharedLootValue, long revision)
 	{
@@ -273,6 +290,7 @@ public class LootshareEngine
 		return MutationResult.APPLIED;
 	}
 
+	/** Updates a single member's approval through a new revision of the complete host policy. */
 	public synchronized MutationResult updateMemberApprovalStatus(long actingMemberId, long targetMemberId,
 	                                                              MemberApprovalStatus status, long revision)
 	{
@@ -305,6 +323,7 @@ public class LootshareEngine
 		return updateHostState(actingMemberId, active.getHostMemberId(), active.getHostSettings(), revision, statuses);
 	}
 
+	/** Clears host authority when its member leaves; any successor must claim host separately. */
 	public synchronized MutationResult vacateHost(long departingMemberId)
 	{
 		LootshareSession active = activeSession();
@@ -328,6 +347,10 @@ public class LootshareEngine
 		return MutationResult.APPLIED;
 	}
 
+	/**
+	 * Records a pending proposal for the active Party. Identical retransmissions are duplicates;
+	 * equal IDs with different identities are conflicts.
+	 */
 	public synchronized MutationResult addProposal(LootProposal proposal)
 	{
 		if (proposal == null)
@@ -366,6 +389,10 @@ public class LootshareEngine
 		return MutationResult.APPLIED;
 	}
 
+	/**
+	 * Lets only the current host finalize a pending proposal, preserving its supplied accepted roster.
+	 * Accepted proposals are appended to the active session exactly once.
+	 */
 	public synchronized DecisionOutcome decide(String proposalId, long decidingMemberId,
 	                                           LootProposalStatus decision, Instant at,
 	                                           List<LootshareParticipant> participants)

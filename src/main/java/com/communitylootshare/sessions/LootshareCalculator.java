@@ -17,9 +17,19 @@ import java.util.List;
 import java.util.Map;
 import javax.inject.Singleton;
 
+/**
+ * Calculates deterministic balances and direct settlement transfers for a session.
+ *
+ * <p>Remainder coins are assigned in ascending member-ID order from each proposal's frozen roster,
+ * and the resulting balances are always checked to be zero-sum.</p>
+ */
 @Singleton
 public class LootshareCalculator
 {
+	/**
+	 * Includes accepted proposals meeting the session minimum, then derives each member's received,
+	 * entitled, and net amounts.
+	 */
 	public LootshareCalculation calculate(LootshareSession session)
 	{
 		if (session == null)
@@ -89,6 +99,7 @@ public class LootshareCalculator
 		return new LootshareCalculation(totalAcceptedValue, balances, buildTransfers(balances), includedLoot);
 	}
 
+	/** Matches ordered debtors and creditors to produce a deterministic minimal transfer list. */
 	private List<LootshareCalculation.Transfer> buildTransfers(List<LootshareCalculation.Balance> balances)
 	{
 		List<Outstanding> payers = new ArrayList<>();

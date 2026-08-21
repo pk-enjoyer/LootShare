@@ -16,6 +16,11 @@ import java.util.List;
 import java.util.Optional;
 import net.runelite.client.party.messages.PartyMemberMessage;
 
+/**
+ * Party wire payload for a host's final accept or reject decision.
+ *
+ * <p>Accepted decisions carry the frozen split roster; rejected decisions must carry none.</p>
+ */
 public class DecisionMessage extends PartyMemberMessage
 {
 	public static final int PROTOCOL_VERSION = 2;
@@ -46,6 +51,7 @@ public class DecisionMessage extends PartyMemberMessage
 		}
 	}
 
+	/** Validates the wire representation without applying it to engine state. */
 	public Optional<DecodedDecision> decode()
 	{
 		if (protocolVersion != PROTOCOL_VERSION || getMemberId() <= 0L || proposalId == null

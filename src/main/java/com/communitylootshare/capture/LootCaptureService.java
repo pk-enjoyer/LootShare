@@ -27,6 +27,12 @@ import net.runelite.client.game.ItemManager;
 import net.runelite.client.game.ItemStack;
 import net.runelite.client.game.ItemVariationMapping;
 
+/**
+ * Converts RuneLite loot stacks into immutable, price-snapshotted events.
+ *
+ * <p>The service also suppresses the same capture delivered by multiple RuneLite loot event
+ * sources during a single game tick.</p>
+ */
 @Singleton
 public class LootCaptureService
 {
@@ -71,6 +77,13 @@ public class LootCaptureService
 			LootValueBasis.GRAND_EXCHANGE);
 	}
 
+	/**
+	 * Captures a valid item collection using the supplied valuation basis. Item quantities are
+	 * coalesced and prices are resolved now, so later price changes cannot alter the split.
+	 *
+	 * @return a new event, or empty when the input is invalid, overflows, or duplicates the prior
+	 * capture in {@code captureTick}
+	 */
 	public synchronized Optional<SharedLootEvent> capture(String sourceLabel, Collection<ItemStack> stacks,
 	                                                      String recipient, Instant capturedAt,
 	                                                      long captureTick, LootValueBasis lootValueBasis)
@@ -149,6 +162,7 @@ public class LootCaptureService
 		return Optional.of(event);
 	}
 
+	/** Clears the one-tick duplicate detector when a Party or profile boundary is crossed. */
 	public synchronized void resetDeduplication()
 	{
 		lastCaptureTick = Long.MIN_VALUE;

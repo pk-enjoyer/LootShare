@@ -28,6 +28,11 @@ import net.runelite.client.RuneLite;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.config.ConfigProfile;
 
+/**
+ * Reads and atomically writes profile-scoped Community Lootshare history under RuneLite's data
+ * directory. Invalid, oversized, and newer-schema files are treated as read-only to preserve the
+ * existing data rather than overwriting it.
+ */
 @Singleton
 @Slf4j
 public class LootshareStorage
@@ -80,6 +85,7 @@ public class LootshareStorage
 		return sanitized.isEmpty() ? "profile" : sanitized;
 	}
 
+	/** Resolves the current RuneLite configuration profile to its isolated storage file. */
 	@Nullable
 	public File resolveCurrentFile()
 	{
@@ -101,6 +107,10 @@ public class LootshareStorage
 		return new File(pluginDirectory, fileName);
 	}
 
+	/**
+	 * Loads a schema-supported state. A corrupt file yields an empty read-only result, preventing a
+	 * later save from destroying data that may still be recoverable.
+	 */
 	public LoadResult load(@Nullable File file)
 	{
 		if (file == null)
@@ -143,6 +153,11 @@ public class LootshareStorage
 		}
 	}
 
+	/**
+	 * Persists state through a sibling temporary file and atomic replacement where supported.
+	 *
+	 * @return whether the replacement completed successfully
+	 */
 	public boolean save(@Nullable File file, LootshareState state)
 	{
 		if (file == null || state == null)

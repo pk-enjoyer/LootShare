@@ -12,6 +12,12 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * A bounded Party interval containing accepted proposals and revisioned host policy.
+ *
+ * <p>Each accepted proposal owns its frozen roster, allowing later Party roster changes without
+ * rewriting historic entitlements.</p>
+ */
 public final class LootshareSession
 {
 	public static final int MAX_ACCEPTED_PROPOSALS = 4096;
@@ -49,6 +55,11 @@ public final class LootshareSession
 		this.startedAt = startedAt;
 	}
 
+	/**
+	 * Adds one accepted proposal exactly once. The proposal must belong to this Party.
+	 *
+	 * @return {@code true} when added; {@code false} when the proposal ID is already present
+	 */
 	public boolean addAcceptedProposal(LootProposal proposal)
 	{
 		if (proposal == null || proposal.getStatus() != LootProposalStatus.ACCEPTED
@@ -78,6 +89,7 @@ public final class LootshareSession
 		return true;
 	}
 
+	/** Ends this session at or after its start time; completed sessions cannot be ended again. */
 	public boolean end(Instant at)
 	{
 		if (at == null || at.isBefore(startedAt))
@@ -92,6 +104,7 @@ public final class LootshareSession
 		return true;
 	}
 
+	/** Returns an independent copy for callers that must not mutate session state. */
 	public LootshareSession snapshot()
 	{
 		LootshareSession copy = new LootshareSession(sessionId, partyId, startedAt);
@@ -142,6 +155,10 @@ public final class LootshareSession
 		setHostState(hostMemberId, hostSettings, hostRevision, getMemberApprovalStatuses());
 	}
 
+	/**
+	 * Replaces the host-owned policy snapshot after validating the authority and member approvals.
+	 * The host is always stored as approved.
+	 */
 	public void setHostState(long hostMemberId, LootshareSettings hostSettings, long hostRevision,
 	                         Map<Long, MemberApprovalStatus> approvalStatuses)
 	{

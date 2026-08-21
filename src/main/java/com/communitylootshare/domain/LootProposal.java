@@ -14,6 +14,12 @@ import java.util.List;
 import java.util.Set;
 import lombok.EqualsAndHashCode;
 
+/**
+ * Immutable loot proposal owned by a Party member.
+ *
+ * <p>An accepted proposal freezes the eligible split roster; a pending proposal has no decision
+ * data, and a rejected proposal has no roster.</p>
+ */
 @EqualsAndHashCode
 public final class LootProposal
 {
@@ -99,6 +105,11 @@ public final class LootProposal
 		return copy;
 	}
 
+	/**
+	 * Produces the final accepted or rejected form of this proposal.
+	 *
+	 * @throws IllegalStateException if this proposal was already decided
+	 */
 	public LootProposal decide(LootProposalStatus decision, Instant at, List<LootshareParticipant> splitRoster)
 	{
 		if (status != LootProposalStatus.PENDING)
@@ -115,6 +126,7 @@ public final class LootProposal
 		return new LootProposal(partyId, ownerMemberId, event, decision, at, roster);
 	}
 
+	/** Returns a newly validated deep copy suitable for persistence or untrusted input. */
 	public LootProposal validatedCopy()
 	{
 		LootProposal copy = pending(partyId, ownerMemberId,
@@ -127,6 +139,7 @@ public final class LootProposal
 		return copy.decide(status, decidedAt, participants);
 	}
 
+	/** Compares party, owner, and captured event while intentionally ignoring decision state. */
 	public boolean hasSameIdentity(LootProposal other)
 	{
 		return other != null
