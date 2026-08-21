@@ -7,7 +7,8 @@ import org.junit.Test;
 
 public class LootshareSettingsTest
 {
-	@Test public void keepsTheThreeSharedHostSettings()
+	@Test
+	public void keepsTheThreeSharedHostSettings()
 	{
 		LootshareSettings settings = new LootshareSettings(100_000L, LootValueBasis.HIGH_ALCHEMY, true);
 		Assert.assertEquals(100_000L, settings.getMinimumSharedLootValue());

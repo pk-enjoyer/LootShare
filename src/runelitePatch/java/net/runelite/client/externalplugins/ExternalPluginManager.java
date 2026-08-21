@@ -36,6 +36,27 @@ public class ExternalPluginManager
 		this.pluginManager = pluginManager;
 	}
 
+	public static PluginHubManifest.JarData getJarData(Class<? extends Plugin> plugin)
+	{
+		return null;
+	}
+
+	public static PluginHubManifest.DisplayData getDisplayData(Class<? extends Plugin> plugin)
+	{
+		return null;
+	}
+
+	public static String getInternalName(Class<? extends Plugin> plugin)
+	{
+		return plugin.getName();
+	}
+
+	@SafeVarargs
+	public static void loadBuiltin(Class<? extends Plugin>... plugins)
+	{
+		builtinExternals = plugins;
+	}
+
 	public void loadExternalPlugins() throws PluginInstantiationException
 	{
 		if (builtinExternals != null)
@@ -59,26 +80,5 @@ public class ExternalPluginManager
 
 	public void update()
 	{
-	}
-
-	public static PluginHubManifest.JarData getJarData(Class<? extends Plugin> plugin)
-	{
-		return null;
-	}
-
-	public static PluginHubManifest.DisplayData getDisplayData(Class<? extends Plugin> plugin)
-	{
-		return null;
-	}
-
-	public static String getInternalName(Class<? extends Plugin> plugin)
-	{
-		return plugin.getName();
-	}
-
-	@SafeVarargs
-	public static void loadBuiltin(Class<? extends Plugin>... plugins)
-	{
-		builtinExternals = plugins;
 	}
 }

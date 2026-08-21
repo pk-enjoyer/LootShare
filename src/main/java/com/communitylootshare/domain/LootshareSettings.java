@@ -13,7 +13,7 @@ public final class LootshareSettings
 	private final boolean includeLoggedOutMembers;
 
 	public LootshareSettings(long minimumSharedLootValue, LootValueBasis lootValueBasis,
-		boolean includeLoggedOutMembers)
+	                         boolean includeLoggedOutMembers)
 	{
 		if (minimumSharedLootValue < 0L)
 		{
@@ -24,7 +24,18 @@ public final class LootshareSettings
 		this.includeLoggedOutMembers = includeLoggedOutMembers;
 	}
 
-	public long getMinimumSharedLootValue() { return minimumSharedLootValue; }
-	public LootValueBasis getLootValueBasis() { return lootValueBasis; }
-	public boolean isIncludeLoggedOutMembers() { return includeLoggedOutMembers; }
+	public long getMinimumSharedLootValue()
+	{
+		return minimumSharedLootValue;
+	}
+
+	public LootValueBasis getLootValueBasis()
+	{
+		return lootValueBasis;
+	}
+
+	public boolean isIncludeLoggedOutMembers()
+	{
+		return includeLoggedOutMembers;
+	}
 }

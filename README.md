@@ -1,4 +1,5 @@
 # Community Lootshare
+VERY MUCH IN DEVELOPMENT!!!!!!!
 
 Community Lootshare tracks eligible loot found by your RuneLite Party and calculates equal shares and settlement payments.
 

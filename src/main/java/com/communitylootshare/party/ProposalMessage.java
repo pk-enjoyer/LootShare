@@ -13,7 +13,9 @@ import java.util.List;
 import java.util.Optional;
 import net.runelite.client.party.messages.PartyMemberMessage;
 
-/** Beta capture payload; RuneLite's sender ID is the proposal owner. */
+/**
+ * Beta capture payload; RuneLite's sender ID is the proposal owner.
+ */
 public class ProposalMessage extends PartyMemberMessage
 {
 	public static final int PROTOCOL_VERSION = 1;
@@ -24,11 +26,16 @@ public class ProposalMessage extends PartyMemberMessage
 	private long capturedAtEpochMilli;
 	private List<ItemPayload> items = new ArrayList<>();
 
-	public ProposalMessage() { }
+	public ProposalMessage()
+	{
+	}
+
 	public ProposalMessage(LootProposal proposal)
 	{
 		SharedLootEvent event = proposal.getEvent();
-		proposalId = event.getProposalId(); recipient = event.getRecipient(); sourceLabel = event.getSourceLabel();
+		proposalId = event.getProposalId();
+		recipient = event.getRecipient();
+		sourceLabel = event.getSourceLabel();
 		capturedAtEpochMilli = event.getCapturedAt().toEpochMilli();
 		for (SharedLootItem item : event.getItems())
 		{
@@ -48,20 +55,38 @@ public class ProposalMessage extends PartyMemberMessage
 			List<SharedLootItem> decoded = new ArrayList<>();
 			for (ItemPayload item : items)
 			{
-				if (item == null) { return Optional.empty(); }
+				if (item == null)
+				{
+					return Optional.empty();
+				}
 				decoded.add(new SharedLootItem(item.itemId, item.pricingId, item.quantity, item.unitPrice));
 			}
 			return Optional.of(LootProposal.pending(partyId, getMemberId(),
 				new SharedLootEvent(proposalId, recipient, sourceLabel, Instant.ofEpochMilli(capturedAtEpochMilli), decoded)));
 		}
-		catch (RuntimeException ignored) { return Optional.empty(); }
+		catch (RuntimeException ignored)
+		{
+			return Optional.empty();
+		}
 	}
 
 	public static class ItemPayload
 	{
-		private int itemId; private int pricingId; private long quantity; private long unitPrice;
-		public ItemPayload() { }
+		private int itemId;
+		private int pricingId;
+		private long quantity;
+		private long unitPrice;
+
+		public ItemPayload()
+		{
+		}
+
 		private ItemPayload(int itemId, int pricingId, long quantity, long unitPrice)
-		{ this.itemId = itemId; this.pricingId = pricingId; this.quantity = quantity; this.unitPrice = unitPrice; }
+		{
+			this.itemId = itemId;
+			this.pricingId = pricingId;
+			this.quantity = quantity;
+			this.unitPrice = unitPrice;
+		}
 	}
 }

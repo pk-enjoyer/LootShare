@@ -9,7 +9,9 @@ import com.communitylootshare.domain.LootshareSettings;
 import java.util.Optional;
 import net.runelite.client.party.messages.PartyMemberMessage;
 
-/** Compact beta host-policy snapshot. */
+/**
+ * Compact beta host-policy snapshot.
+ */
 public class HostMessage extends PartyMemberMessage
 {
 	public static final int PROTOCOL_VERSION = 1;
@@ -20,7 +22,9 @@ public class HostMessage extends PartyMemberMessage
 	private boolean includeLoggedOutMembers;
 	private long revision;
 
-	public HostMessage() { }
+	public HostMessage()
+	{
+	}
 
 	public HostMessage(long hostMemberId, LootshareSettings settings, long revision)
 	{
@@ -57,10 +61,27 @@ public class HostMessage extends PartyMemberMessage
 		private final long hostMemberId;
 		private final LootshareSettings settings;
 		private final long revision;
+
 		private DecodedHostState(long hostMemberId, LootshareSettings settings, long revision)
-		{ this.hostMemberId = hostMemberId; this.settings = settings; this.revision = revision; }
-		public long getHostMemberId() { return hostMemberId; }
-		public LootshareSettings getSettings() { return settings; }
-		public long getRevision() { return revision; }
+		{
+			this.hostMemberId = hostMemberId;
+			this.settings = settings;
+			this.revision = revision;
+		}
+
+		public long getHostMemberId()
+		{
+			return hostMemberId;
+		}
+
+		public LootshareSettings getSettings()
+		{
+			return settings;
+		}
+
+		public long getRevision()
+		{
+			return revision;
+		}
 	}
 }

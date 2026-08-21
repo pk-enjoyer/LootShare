@@ -15,16 +15,65 @@ public final class LootProposal
 	private final SharedLootEvent event;
 	private Instant decidedAt;
 	private List<LootshareParticipant> participants = Collections.emptyList();
+
 	private LootProposal(long partyId, long ownerMemberId, SharedLootEvent event)
-	{ if (partyId <= 0L || ownerMemberId <= 0L || event == null) throw new IllegalArgumentException("Valid proposal required"); this.partyId = partyId; this.ownerMemberId = ownerMemberId; this.event = event; }
-	public static LootProposal pending(long partyId, long ownerMemberId, SharedLootEvent event) { return new LootProposal(partyId, ownerMemberId, event); }
+	{
+		if (partyId <= 0L || ownerMemberId <= 0L || event == null)
+		{
+			throw new IllegalArgumentException("Valid proposal required");
+		}
+		this.partyId = partyId;
+		this.ownerMemberId = ownerMemberId;
+		this.event = event;
+	}
+
+	public static LootProposal pending(long partyId, long ownerMemberId, SharedLootEvent event)
+	{
+		return new LootProposal(partyId, ownerMemberId, event);
+	}
+
 	public void accept(Instant at, List<LootshareParticipant> roster)
-	{ if (at == null || roster == null || roster.isEmpty() || roster.size() > MAX_PARTICIPANTS) throw new IllegalArgumentException("Valid roster required"); decidedAt = at; participants = Collections.unmodifiableList(new ArrayList<>(roster)); }
-	public boolean isAccepted() { return decidedAt != null; }
-	public String getProposalId() { return event.getProposalId(); }
-	public long getPartyId() { return partyId; }
-	public long getOwnerMemberId() { return ownerMemberId; }
-	public SharedLootEvent getEvent() { return event; }
-	public Instant getDecidedAt() { return decidedAt; }
-	public List<LootshareParticipant> getParticipants() { return participants; }
+	{
+		if (at == null || roster == null || roster.isEmpty() || roster.size() > MAX_PARTICIPANTS)
+		{
+			throw new IllegalArgumentException("Valid roster required");
+		}
+		decidedAt = at;
+		participants = Collections.unmodifiableList(new ArrayList<>(roster));
+	}
+
+	public boolean isAccepted()
+	{
+		return decidedAt != null;
+	}
+
+	public String getProposalId()
+	{
+		return event.getProposalId();
+	}
+
+	public long getPartyId()
+	{
+		return partyId;
+	}
+
+	public long getOwnerMemberId()
+	{
+		return ownerMemberId;
+	}
+
+	public SharedLootEvent getEvent()
+	{
+		return event;
+	}
+
+	public Instant getDecidedAt()
+	{
+		return decidedAt;
+	}
+
+	public List<LootshareParticipant> getParticipants()
+	{
+		return participants;
+	}
 }

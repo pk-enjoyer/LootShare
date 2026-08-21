@@ -162,7 +162,9 @@ public class LootCaptureService
 		return Optional.of(event);
 	}
 
-	/** Clears the one-tick duplicate detector when a Party or profile boundary is crossed. */
+	/**
+	 * Clears the one-tick duplicate detector when a Party or profile boundary is crossed.
+	 */
 	public synchronized void resetDeduplication()
 	{
 		lastCaptureTick = Long.MIN_VALUE;

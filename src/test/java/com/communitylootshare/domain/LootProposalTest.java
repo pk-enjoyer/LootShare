@@ -9,7 +9,8 @@ import org.junit.Test;
 
 public class LootProposalTest
 {
-	@Test public void acceptsOneFrozenRoster()
+	@Test
+	public void acceptsOneFrozenRoster()
 	{
 		SharedLootEvent event = new SharedLootEvent("drop", "Alice", "NPC", Instant.EPOCH,
 			Arrays.asList(new SharedLootItem(995, 995, 100, 1)));

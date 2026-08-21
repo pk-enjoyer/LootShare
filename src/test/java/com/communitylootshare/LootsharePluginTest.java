@@ -5,7 +5,9 @@ package com.communitylootshare;
 import net.runelite.client.RuneLite;
 import net.runelite.client.externalplugins.ExternalPluginManager;
 
-/** Manual development-client launcher; not a JUnit test. */
+/**
+ * Manual development-client launcher; not a JUnit test.
+ */
 public class LootsharePluginTest
 {
 	public static void main(String[] args) throws Exception
