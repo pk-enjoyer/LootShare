@@ -14,7 +14,6 @@ import com.communitylootshare.domain.LootshareCalculation;
 import com.communitylootshare.domain.LootshareParticipant;
 import com.communitylootshare.domain.LootshareSession;
 import com.communitylootshare.domain.LootshareSettings;
-import com.communitylootshare.domain.MemberApprovalStatus;
 import com.communitylootshare.domain.SharedLootEvent;
 import com.communitylootshare.party.DecisionMessage;
 import com.communitylootshare.party.HostMessage;
@@ -119,21 +118,21 @@ public class LootshareController
 		this.storage = storage;
 	}
 
-	private static boolean capturesLootType(LootshareSettings settings, LootRecordType lootType)
+	private static boolean capturesLootType(LootRecordType lootType)
 	{
 		switch (lootType)
 		{
 			case NPC:
-				return settings.isCaptureNpcLoot();
+				return true;
 			case EVENT:
-				return settings.isCaptureEventLoot();
+				return true;
 			case PLAYER:
 				return false;
 			case PICKPOCKET:
 				return false;
 			case UNKNOWN:
 			default:
-				return settings.isCaptureUnknownLoot();
+				return true;
 		}
 	}
 
@@ -206,7 +205,7 @@ public class LootshareController
 		}
 		LootRecordType lootType = received.getType() == null ? LootRecordType.UNKNOWN : received.getType();
 		LootshareSettings settings = effectiveHostSettings();
-		if (settings == null || !capturesLootType(settings, lootType))
+		if (settings == null || !capturesLootType(lootType))
 		{
 			return;
 		}
@@ -249,7 +248,7 @@ public class LootshareController
 			return;
 		}
 		LootshareSettings settings = effectiveHostSettings();
-		if (settings == null || !settings.isCaptureNpcLoot())
+		if (settings == null)
 		{
 			return;
 		}
@@ -321,15 +320,6 @@ public class LootshareController
 			message.decodeWithMetadata(partyService.getPartyId());
 		decoded.ifPresent(envelope -> executeWhenReady(() -> {
 			LootProposal proposal = envelope.getProposal();
-			if (proposal.getOwnerMemberId() != message.getMemberId()
-				&& engine.getActiveHostMemberId() != message.getMemberId())
-			{
-				return;
-			}
-			if (envelope.isManualGp())
-			{
-				return;
-			}
 			rememberMemberName(proposal.getOwnerMemberId(), proposal.getEvent().getRecipient());
 			MutationResult result = engine.addProposal(proposal);
 			boolean decisionsApplied = (result == MutationResult.APPLIED || result == MutationResult.DUPLICATE)
@@ -424,7 +414,7 @@ public class LootshareController
 				return;
 			}
 			MutationResult result = engine.updateHostState(message.getMemberId(), hostState.getHostMemberId(),
-				hostState.getSettings(), hostState.getRevision(), hostState.getApprovalStatuses());
+				hostState.getMinimumSharedLootValue(), hostState.getRevision());
 			if (result == MutationResult.APPLIED || result == MutationResult.DUPLICATE)
 			{
 				hostSettingsSynchronized = true;
@@ -494,17 +484,7 @@ public class LootshareController
 				}
 				boolean decisionsApplied = resolvePendingProposalsAsHost();
 				long revision = nextHostRevision();
-				MutationResult removal = revision == 0L
-					? MutationResult.LIMIT_REACHED
-					: engine.updateMemberApprovalStatus(hostMemberId, event.getMemberId(),
-					MemberApprovalStatus.PENDING, revision);
-				if (removal == MutationResult.APPLIED)
-				{
-					queueCurrentStateForSave();
-					sendCurrentHostState();
-					notifyStateChanged();
-				}
-				else if (decisionsApplied)
+				if (decisionsApplied)
 				{
 					queueCurrentStateForSave();
 					notifyStateChanged();
@@ -645,11 +625,6 @@ public class LootshareController
 		return isReady() ? engine.getActiveHostMemberId() : 0L;
 	}
 
-	public MemberApprovalStatus getMemberApprovalStatus(long memberId)
-	{
-		return isReady() ? engine.getActiveMemberApprovalStatus(memberId) : MemberApprovalStatus.PENDING;
-	}
-
 	public Optional<LootshareSettings> getActiveHostSettings()
 	{
 		long hostMemberId = engine.getActiveHostMemberId();
@@ -657,69 +632,7 @@ public class LootshareController
 			|| engine.getActivePartyId() != partyService.getPartyId()
 			|| hostMemberId <= 0L || partyService.getMemberById(hostMemberId) == null
 			? Optional.empty()
-			: engine.getActiveHostSettings();
-	}
-
-	/**
-	 * Must be invoked on the RuneLite client thread by the sidebar controller.
-	 */
-	public MutationResult setMemberApproved(long memberId, boolean approved)
-	{
-		if (!isReady() || !partyService.isInParty())
-		{
-			return MutationResult.NO_ACTIVE_SESSION;
-		}
-		PartyMember local = partyService.getLocalMember();
-		if (local == null || engine.getActiveHostMemberId() != local.getMemberId())
-		{
-			return MutationResult.NOT_HOST;
-		}
-		if (partyService.getMemberById(memberId) == null)
-		{
-			return MutationResult.NOT_FOUND;
-		}
-		MemberApprovalStatus nextStatus = approved
-			? MemberApprovalStatus.APPROVED
-			: MemberApprovalStatus.EXCLUDED;
-		if (memberId == local.getMemberId() && nextStatus != MemberApprovalStatus.APPROVED)
-		{
-			return MutationResult.INVALID;
-		}
-
-		boolean decisionsApplied = resolvePendingProposalsAsHost();
-		if (engine.getActiveMemberApprovalStatus(memberId) == nextStatus)
-		{
-			if (decisionsApplied)
-			{
-				queueCurrentStateForSave();
-				notifyStateChanged();
-			}
-			return MutationResult.DUPLICATE;
-		}
-		long revision = nextHostRevision();
-		if (revision == 0L)
-		{
-			return MutationResult.LIMIT_REACHED;
-		}
-		MutationResult result = engine.updateMemberApprovalStatus(local.getMemberId(), memberId,
-			nextStatus, revision);
-		if (result == MutationResult.APPLIED)
-		{
-			queueCurrentStateForSave();
-			sendCurrentHostState();
-			notifyStateChanged();
-		}
-		else if (decisionsApplied)
-		{
-			queueCurrentStateForSave();
-			notifyStateChanged();
-		}
-		return result;
-	}
-
-	public List<LootshareSession> getHistory()
-	{
-		return isReady() ? engine.getHistory() : Collections.emptyList();
+			: Optional.of(LootshareSettings.defaults(engine.getActiveMinimumSharedLootValue()));
 	}
 
 	public boolean isReady()
@@ -752,11 +665,6 @@ public class LootshareController
 		{
 			return MutationResult.NO_ACTIVE_SESSION;
 		}
-		if (decision == LootProposalStatus.ACCEPTED
-			&& engine.getActiveMemberApprovalStatus(proposal.getOwnerMemberId()) != MemberApprovalStatus.APPROVED)
-		{
-			return MutationResult.INVALID;
-		}
 		List<LootshareParticipant> roster = decision == LootProposalStatus.ACCEPTED
 			? snapshotRoster(proposal, local, settings)
 			: Collections.emptyList();
@@ -777,8 +685,7 @@ public class LootshareController
 	private List<LootshareParticipant> snapshotRoster(LootProposal proposal, PartyMember local,
 	                                                  LootshareSettings settings)
 	{
-		if (engine.getActiveMemberApprovalStatus(proposal.getOwnerMemberId()) != MemberApprovalStatus.APPROVED
-			|| partyService.getMemberById(proposal.getOwnerMemberId()) == null)
+		if (partyService.getMemberById(proposal.getOwnerMemberId()) == null)
 		{
 			return Collections.emptyList();
 		}
@@ -796,11 +703,7 @@ public class LootshareController
 			{
 				break;
 			}
-			if (engine.getActiveMemberApprovalStatus(member.getMemberId()) != MemberApprovalStatus.APPROVED)
-			{
-				continue;
-			}
-			if (!settings.isIncludeLoggedOutMembers() && !member.isLoggedIn()
+			if (!member.isLoggedIn()
 				&& member.getMemberId() != local.getMemberId())
 			{
 				continue;
@@ -827,7 +730,7 @@ public class LootshareController
 			return false;
 		}
 		PartyMember local = partyService.getLocalMember();
-		LootshareSettings settings = engine.getActiveHostSettings().orElse(null);
+		LootshareSettings settings = getActiveHostSettings().orElse(null);
 		if (local == null || settings == null || engine.getActiveHostMemberId() != local.getMemberId())
 		{
 			return false;
@@ -839,9 +742,7 @@ public class LootshareController
 		boolean changed = false;
 		for (LootProposal proposal : pending)
 		{
-			boolean ownerApproved = engine.getActiveMemberApprovalStatus(proposal.getOwnerMemberId())
-				== MemberApprovalStatus.APPROVED
-				&& partyService.getMemberById(proposal.getOwnerMemberId()) != null;
+			boolean ownerApproved = partyService.getMemberById(proposal.getOwnerMemberId()) != null;
 			LootProposalStatus decision = ownerApproved
 				? LootProposalStatus.ACCEPTED
 				: LootProposalStatus.REJECTED;
@@ -972,7 +873,7 @@ public class LootshareController
 			return false;
 		}
 		MutationResult result = engine.updateHostState(local.getMemberId(), local.getMemberId(),
-			configuredSettings(), revision);
+			configuredSettings().getMinimumSharedLootValue(), revision);
 		if (result != MutationResult.APPLIED)
 		{
 			return false;
@@ -1013,7 +914,7 @@ public class LootshareController
 			return;
 		}
 		hostSettingsSynchronized = true;
-		if (engine.getActiveHostSettings().map(configuredSettings::equals).orElse(false))
+		if (engine.getActiveMinimumSharedLootValue() == configuredSettings.getMinimumSharedLootValue())
 		{
 			return;
 		}
@@ -1023,7 +924,7 @@ public class LootshareController
 			return;
 		}
 		MutationResult result = engine.updateHostState(local.getMemberId(), local.getMemberId(),
-			configuredSettings, revision);
+			configuredSettings.getMinimumSharedLootValue(), revision);
 		if (result == MutationResult.APPLIED)
 		{
 			queueCurrentStateForSave();
@@ -1046,9 +947,7 @@ public class LootshareController
 		{
 			return;
 		}
-		engine.getActiveHostSettings().ifPresent(settings -> partyService.send(
-			new HostMessage(hostMemberId, settings, revision,
-				engine.getActiveMemberApprovalStatuses())));
+		partyService.send(new HostMessage(hostMemberId, engine.getActiveMinimumSharedLootValue(), revision));
 	}
 
 	private LootshareSettings configuredSettings()
@@ -1059,14 +958,7 @@ public class LootshareController
 		long minimumSharedLootValue = configuredValue < 0
 			? LootshareConfig.DEFAULT_MINIMUM_SHARED_LOOT_VALUE
 			: configuredValue;
-		if (config == null)
-		{
-			return LootshareSettings.defaults(minimumSharedLootValue);
-		}
-		return new LootshareSettings(minimumSharedLootValue,
-			com.communitylootshare.domain.LootValueBasis.GRAND_EXCHANGE,
-			config.captureNpcLoot(), config.captureEventLoot(), false,
-			false, config.captureUnknownLoot(), config.includeLoggedOutMembers());
+		return LootshareSettings.defaults(minimumSharedLootValue);
 	}
 
 	private long nextHostRevision()

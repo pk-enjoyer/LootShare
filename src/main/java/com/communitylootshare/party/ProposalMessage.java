@@ -17,12 +17,10 @@ import net.runelite.client.party.messages.PartyMemberMessage;
 
 public class ProposalMessage extends PartyMemberMessage
 {
-	public static final int PROTOCOL_VERSION = 2;
+	public static final int PROTOCOL_VERSION = 1;
 
 	private int protocolVersion = PROTOCOL_VERSION;
 	private String proposalId;
-	private long ownerMemberId;
-	private boolean manualGp;
 	private String recipient;
 	private String sourceLabel;
 	private long capturedAtEpochMilli;
@@ -34,18 +32,11 @@ public class ProposalMessage extends PartyMemberMessage
 
 	public ProposalMessage(LootProposal proposal)
 	{
-		this(proposal, false);
-	}
-
-	public ProposalMessage(LootProposal proposal, boolean manualGp)
-	{
 		if (proposal == null)
 		{
 			throw new IllegalArgumentException("Proposal is required");
 		}
 		SharedLootEvent event = proposal.getEvent();
-		this.ownerMemberId = proposal.getOwnerMemberId();
-		this.manualGp = manualGp;
 		this.proposalId = event.getProposalId();
 		this.recipient = event.getRecipient();
 		this.sourceLabel = event.getSourceLabel();
@@ -58,7 +49,7 @@ public class ProposalMessage extends PartyMemberMessage
 
 	public Optional<DecodedProposal> decodeWithMetadata(long partyId)
 	{
-		if ((protocolVersion != 1 && protocolVersion != PROTOCOL_VERSION) || getMemberId() <= 0L || partyId <= 0L
+		if (protocolVersion != PROTOCOL_VERSION || getMemberId() <= 0L || partyId <= 0L
 			|| items == null || items.isEmpty() || items.size() > SharedLootEvent.MAX_ITEMS)
 		{
 			return Optional.empty();
@@ -74,14 +65,9 @@ public class ProposalMessage extends PartyMemberMessage
 				}
 				decodedItems.add(new SharedLootItem(item.itemId, item.pricingId, item.quantity, item.unitPrice));
 			}
-			long decodedOwnerMemberId = protocolVersion == 1 ? getMemberId() : ownerMemberId;
-			if (decodedOwnerMemberId <= 0L)
-			{
-				return Optional.empty();
-			}
 			SharedLootEvent event = new SharedLootEvent(proposalId, recipient, sourceLabel,
 				Instant.ofEpochMilli(capturedAtEpochMilli), decodedItems);
-			return Optional.of(new DecodedProposal(LootProposal.pending(partyId, decodedOwnerMemberId, event), manualGp));
+			return Optional.of(new DecodedProposal(LootProposal.pending(partyId, getMemberId(), event)));
 		}
 		catch (RuntimeException ignored)
 		{
@@ -104,15 +90,6 @@ public class ProposalMessage extends PartyMemberMessage
 		return proposalId;
 	}
 
-	public long getOwnerMemberId()
-	{
-		return ownerMemberId;
-	}
-
-	public boolean isManualGp()
-	{
-		return manualGp;
-	}
 
 	public List<ItemPayload> getItems()
 	{
@@ -162,12 +139,9 @@ public class ProposalMessage extends PartyMemberMessage
 	public static final class DecodedProposal
 	{
 		private final LootProposal proposal;
-		private final boolean manualGp;
-
-		private DecodedProposal(LootProposal proposal, boolean manualGp)
+		private DecodedProposal(LootProposal proposal)
 		{
 			this.proposal = proposal;
-			this.manualGp = manualGp;
 		}
 
 		public LootProposal getProposal()
@@ -175,9 +149,5 @@ public class ProposalMessage extends PartyMemberMessage
 			return proposal;
 		}
 
-		public boolean isManualGp()
-		{
-			return manualGp;
-		}
 	}
 }

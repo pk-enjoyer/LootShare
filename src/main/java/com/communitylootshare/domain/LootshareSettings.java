@@ -5,7 +5,6 @@
 
 package com.communitylootshare.domain;
 
-import java.util.Objects;
 
 /**
  * Immutable host-owned policy used by every member of a Community Lootshare Party.
@@ -16,43 +15,13 @@ public final class LootshareSettings
 	public static final long DEFAULT_MINIMUM_SHARED_LOOT_VALUE = 100_000L;
 
 	private final long minimumSharedLootValue;
-	private final LootValueBasis lootValueBasis;
-	private final boolean captureNpcLoot;
-	private final boolean captureEventLoot;
-	private final boolean capturePlayerLoot;
-	private final boolean capturePickpocketLoot;
-	private final boolean captureUnknownLoot;
-	private final boolean includeLoggedOutMembers;
-	private final boolean allowMemberManualGp;
-
-	public LootshareSettings(long minimumSharedLootValue, LootValueBasis lootValueBasis,
-	                         boolean captureNpcLoot, boolean captureEventLoot,
-	                         boolean capturePlayerLoot, boolean capturePickpocketLoot,
-	                         boolean captureUnknownLoot, boolean includeLoggedOutMembers)
-	{
-		this(minimumSharedLootValue, lootValueBasis, captureNpcLoot, captureEventLoot,
-			capturePlayerLoot, capturePickpocketLoot, captureUnknownLoot, includeLoggedOutMembers, false);
-	}
-
-	public LootshareSettings(long minimumSharedLootValue, LootValueBasis lootValueBasis,
-	                         boolean captureNpcLoot, boolean captureEventLoot,
-	                         boolean capturePlayerLoot, boolean capturePickpocketLoot,
-	                         boolean captureUnknownLoot, boolean includeLoggedOutMembers,
-	                         boolean allowMemberManualGp)
+	public LootshareSettings(long minimumSharedLootValue)
 	{
 		if (minimumSharedLootValue < 0L || minimumSharedLootValue > MAXIMUM_SHARED_LOOT_VALUE)
 		{
 			throw new IllegalArgumentException("Minimum shared loot value is out of range");
 		}
 		this.minimumSharedLootValue = minimumSharedLootValue;
-		this.lootValueBasis = Objects.requireNonNull(lootValueBasis, "lootValueBasis");
-		this.captureNpcLoot = captureNpcLoot;
-		this.captureEventLoot = captureEventLoot;
-		this.capturePlayerLoot = capturePlayerLoot;
-		this.capturePickpocketLoot = capturePickpocketLoot;
-		this.captureUnknownLoot = captureUnknownLoot;
-		this.includeLoggedOutMembers = includeLoggedOutMembers;
-		this.allowMemberManualGp = allowMemberManualGp;
 	}
 
 	public static LootshareSettings defaults()
@@ -62,15 +31,12 @@ public final class LootshareSettings
 
 	public static LootshareSettings defaults(long minimumSharedLootValue)
 	{
-		return new LootshareSettings(minimumSharedLootValue, LootValueBasis.GRAND_EXCHANGE,
-			true, true, false, false, true, false);
+		return new LootshareSettings(minimumSharedLootValue);
 	}
 
 	public LootshareSettings validatedCopy()
 	{
-		return new LootshareSettings(minimumSharedLootValue, lootValueBasis,
-			captureNpcLoot, captureEventLoot, capturePlayerLoot, capturePickpocketLoot,
-			captureUnknownLoot, includeLoggedOutMembers, allowMemberManualGp);
+		return new LootshareSettings(minimumSharedLootValue);
 	}
 
 	public long getMinimumSharedLootValue()
@@ -78,52 +44,10 @@ public final class LootshareSettings
 		return minimumSharedLootValue;
 	}
 
-	public LootValueBasis getLootValueBasis()
-	{
-		return lootValueBasis;
-	}
-
-	public boolean isCaptureNpcLoot()
-	{
-		return captureNpcLoot;
-	}
-
-	public boolean isCaptureEventLoot()
-	{
-		return captureEventLoot;
-	}
-
-	public boolean isCapturePlayerLoot()
-	{
-		return capturePlayerLoot;
-	}
-
-	public boolean isCapturePickpocketLoot()
-	{
-		return capturePickpocketLoot;
-	}
-
-	public boolean isCaptureUnknownLoot()
-	{
-		return captureUnknownLoot;
-	}
-
-	public boolean isIncludeLoggedOutMembers()
-	{
-		return includeLoggedOutMembers;
-	}
-
-	public boolean isAllowMemberManualGp()
-	{
-		return allowMemberManualGp;
-	}
-
 	@Override
 	public int hashCode()
 	{
-		return Objects.hash(minimumSharedLootValue, lootValueBasis, captureNpcLoot,
-			captureEventLoot, capturePlayerLoot, capturePickpocketLoot, captureUnknownLoot,
-			includeLoggedOutMembers, allowMemberManualGp);
+		return Long.hashCode(minimumSharedLootValue);
 	}
 
 	@Override
@@ -138,14 +62,6 @@ public final class LootshareSettings
 			return false;
 		}
 		LootshareSettings that = (LootshareSettings) other;
-		return minimumSharedLootValue == that.minimumSharedLootValue
-			&& captureNpcLoot == that.captureNpcLoot
-			&& captureEventLoot == that.captureEventLoot
-			&& capturePlayerLoot == that.capturePlayerLoot
-			&& capturePickpocketLoot == that.capturePickpocketLoot
-			&& captureUnknownLoot == that.captureUnknownLoot
-			&& includeLoggedOutMembers == that.includeLoggedOutMembers
-			&& allowMemberManualGp == that.allowMemberManualGp
-			&& lootValueBasis == that.lootValueBasis;
+		return minimumSharedLootValue == that.minimumSharedLootValue;
 	}
 }

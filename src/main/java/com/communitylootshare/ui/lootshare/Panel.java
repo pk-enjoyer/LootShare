@@ -6,7 +6,6 @@
 package com.communitylootshare.ui.lootshare;
 
 import com.communitylootshare.domain.LootshareSettings;
-import com.communitylootshare.domain.MemberApprovalStatus;
 import com.communitylootshare.ui.UiInteractionGateway;
 import com.communitylootshare.ui.lootshare.PanelState.HostedSettings;
 import com.communitylootshare.ui.lootshare.PanelState.LootItem;
@@ -162,19 +161,6 @@ public class Panel extends PluginPanel
 		label.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
 		label.setBorder(new EmptyBorder(14, 6, 10, 6));
 		return label;
-	}
-
-	private static Color approvalColor(MemberApprovalStatus status)
-	{
-		if (status == MemberApprovalStatus.APPROVED)
-		{
-			return new Color(110, 190, 110);
-		}
-		if (status == MemberApprovalStatus.EXCLUDED)
-		{
-			return new Color(220, 110, 110);
-		}
-		return new Color(222, 168, 64);
 	}
 
 	private static String memberDisplayName(MemberLoot member)
@@ -397,11 +383,6 @@ public class Panel extends PluginPanel
 			hostedSettingsBody.add(settingRow("Host", hostName));
 			hostedSettingsBody.add(settingRow("Minimum split",
 				String.format(Locale.US, "%,d gp", settings.getMinimumSharedLootValue())));
-			hostedSettingsBody.add(settingRow("NPC loot", included(settings.isCaptureNpcLoot())));
-			hostedSettingsBody.add(settingRow("Activity loot", included(settings.isCaptureEventLoot())));
-			hostedSettingsBody.add(settingRow("Other loot", included(settings.isCaptureUnknownLoot())));
-			hostedSettingsBody.add(settingRow("Logged-out members",
-				included(settings.isIncludeLoggedOutMembers())));
 		}
 		hostedSettingsBody.setVisible(hostedSettingsExpanded);
 		updateHostedSettingsToggleText();
@@ -574,8 +555,6 @@ public class Panel extends PluginPanel
 		private final JLabel chevron = new JLabel();
 		private final JPanel lootContainer = new JPanel(new BorderLayout());
 		private final JPanel header;
-		private JLabel approvalStatusLabel;
-		private JButton approvalActionButton;
 
 		private MemberCard(MemberLoot member, boolean expanded)
 		{
@@ -661,32 +640,11 @@ public class Panel extends PluginPanel
 			labels.add(summary);
 			header.add(labels, BorderLayout.CENTER);
 
-			JPanel status = new JPanel();
-			status.setLayout(new BoxLayout(status, BoxLayout.Y_AXIS));
-			status.setOpaque(false);
-			approvalStatusLabel = new JLabel(member.getApprovalStatus().getDisplayName());
-			approvalStatusLabel.setFont(FontManager.getRunescapeSmallFont());
-			approvalStatusLabel.setForeground(approvalColor(member.getApprovalStatus()));
-			approvalStatusLabel.setAlignmentX(RIGHT_ALIGNMENT);
-			status.add(approvalStatusLabel);
-			if (localHost && !member.isHost())
-			{
-				boolean approve = member.getApprovalStatus() != MemberApprovalStatus.APPROVED;
-				approvalActionButton = new JButton(approve ? "Approve" : "Exclude");
-				approvalActionButton.setFont(FontManager.getRunescapeSmallFont());
-				approvalActionButton.setFocusable(false);
-				approvalActionButton.setMargin(new Insets(1, 4, 1, 4));
-				approvalActionButton.setAlignmentX(RIGHT_ALIGNMENT);
-				approvalActionButton.addActionListener(event ->
-					actions.setMemberApproved(member.getMemberId(), approve));
-				status.add(approvalActionButton);
-			}
 			chevron.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
 			chevron.setHorizontalAlignment(SwingConstants.CENTER);
 			chevron.setPreferredSize(new Dimension(14, 34));
 			JPanel right = new JPanel(new BorderLayout(4, 0));
 			right.setOpaque(false);
-			right.add(status, BorderLayout.CENTER);
 			right.add(chevron, BorderLayout.EAST);
 			header.add(right, BorderLayout.EAST);
 			return header;
@@ -761,16 +719,6 @@ public class Panel extends PluginPanel
 		JPanel getHeader()
 		{
 			return header;
-		}
-
-		JLabel getApprovalStatusLabel()
-		{
-			return approvalStatusLabel;
-		}
-
-		JButton getApprovalActionButton()
-		{
-			return approvalActionButton;
 		}
 
 	}

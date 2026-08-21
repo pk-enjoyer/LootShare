@@ -17,9 +17,4 @@ public interface PanelActions
 	void joinPreviousParty();
 
 	void leaveParty();
-
-	default void setMemberApproved(long memberId, boolean approved)
-	{
-	}
-
 }

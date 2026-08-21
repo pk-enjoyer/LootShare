@@ -11,7 +11,6 @@ import com.communitylootshare.domain.LootshareCalculation;
 import com.communitylootshare.domain.LootshareParticipant;
 import com.communitylootshare.domain.LootshareSession;
 import com.communitylootshare.domain.LootshareSettings;
-import com.communitylootshare.domain.MemberApprovalStatus;
 import com.communitylootshare.domain.SharedLootItem;
 import com.communitylootshare.integration.LootshareController;
 import com.communitylootshare.ui.lootshare.PanelState.BalanceRow;
@@ -273,21 +272,6 @@ public class UiController implements PanelActions
 		});
 	}
 
-	@Override
-	public void setMemberApproved(long memberId, boolean approved)
-	{
-		if (!isStarted())
-		{
-			return;
-		}
-		clientThread.invokeLater(() -> {
-			if (isStarted() && partyService.isInParty())
-			{
-				lootshareController.setMemberApproved(memberId, approved);
-			}
-		});
-	}
-
 	public void onPartyChanged(PartyChanged event)
 	{
 		if (event != null && event.getPartyId() != null && partyConfig != null)
@@ -336,16 +320,8 @@ public class UiController implements PanelActions
 			Optional<String> knownName = lootshareController.getKnownMemberName(member);
 			String displayName = resolveDisplayName(member, memberProposals, local ? localPlayerName : null,
 				knownName == null ? null : knownName.orElse(null));
-			MemberApprovalStatus approvalStatus = lootshareController.getMemberApprovalStatus(member.getMemberId());
-			if (approvalStatus == null)
-			{
-				approvalStatus = member.getMemberId() == hostMemberId
-					? MemberApprovalStatus.APPROVED
-					: MemberApprovalStatus.PENDING;
-			}
 			members.add(buildMember(member, displayName, local, member.getMemberId() == hostMemberId,
-				member.isLoggedIn() || (local && localPlayerName != null), memberProposals, itemNames,
-				approvalStatus));
+				member.isLoggedIn() || (local && localPlayerName != null), memberProposals, itemNames));
 		}
 
 		members.sort((left, right) -> {
@@ -379,17 +355,16 @@ public class UiController implements PanelActions
 
 	private MemberLoot buildMember(PartyMember member, String displayName, boolean local, boolean host,
 	                               boolean loggedIn,
-	                               List<LootProposal> proposals, Map<Integer, String> itemNames,
-	                               MemberApprovalStatus approvalStatus)
+	                               List<LootProposal> proposals, Map<Integer, String> itemNames)
 	{
 		return buildMember(member.getMemberId(), displayName, local, host, loggedIn, member.getAvatar(),
-			proposals, itemNames, approvalStatus);
+			proposals, itemNames);
 	}
 
 	private MemberLoot buildMember(long memberId, String displayName, boolean local, boolean host,
 	                               boolean loggedIn,
 	                               BufferedImage avatar, List<LootProposal> proposals,
-	                               Map<Integer, String> itemNames, MemberApprovalStatus approvalStatus)
+	                               Map<Integer, String> itemNames)
 	{
 		Map<Integer, ItemAggregate> itemAggregates = new LinkedHashMap<>();
 		int proposalCount = 0;
@@ -423,7 +398,7 @@ public class UiController implements PanelActions
 			.thenComparingInt(LootItem::getItemId));
 
 		return new MemberLoot(memberId, displayName, local, host, loggedIn, avatar,
-			proposalCount, pendingProposalCount, totalValue, items, approvalStatus);
+			proposalCount, pendingProposalCount, totalValue, items);
 	}
 
 	private SettlementState buildSettlementState(LootshareSession session, LootshareCalculation calculation)

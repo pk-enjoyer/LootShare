@@ -6,7 +6,6 @@
 package com.communitylootshare.ui.lootshare;
 
 import com.communitylootshare.domain.LootshareSettings;
-import com.communitylootshare.domain.MemberApprovalStatus;
 import java.awt.image.BufferedImage;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -304,7 +303,6 @@ public final class PanelState
 		private final int pendingProposalCount;
 		private final long totalValue;
 		private final List<LootItem> items;
-		private final MemberApprovalStatus approvalStatus;
 
 		public MemberLoot(long memberId, String displayName, boolean local, boolean loggedIn,
 		                  BufferedImage avatar, int proposalCount, int pendingProposalCount,
@@ -318,15 +316,6 @@ public final class PanelState
 		                  BufferedImage avatar, int proposalCount, int pendingProposalCount,
 		                  long totalValue, List<LootItem> items)
 		{
-			this(memberId, displayName, local, host, loggedIn, avatar, proposalCount,
-				pendingProposalCount, totalValue, items,
-				host ? MemberApprovalStatus.APPROVED : MemberApprovalStatus.PENDING);
-		}
-
-		public MemberLoot(long memberId, String displayName, boolean local, boolean host, boolean loggedIn,
-		                  BufferedImage avatar, int proposalCount, int pendingProposalCount,
-		                  long totalValue, List<LootItem> items, MemberApprovalStatus approvalStatus)
-		{
 			this.memberId = memberId;
 			this.displayName = Objects.requireNonNull(displayName, "displayName");
 			this.local = local;
@@ -337,7 +326,6 @@ public final class PanelState
 			this.pendingProposalCount = pendingProposalCount;
 			this.totalValue = totalValue;
 			this.items = Collections.unmodifiableList(new ArrayList<>(Objects.requireNonNull(items, "items")));
-			this.approvalStatus = Objects.requireNonNull(approvalStatus, "approvalStatus");
 		}
 
 		public long getMemberId()
@@ -390,10 +378,6 @@ public final class PanelState
 			return items;
 		}
 
-		public MemberApprovalStatus getApprovalStatus()
-		{
-			return approvalStatus;
-		}
 	}
 
 	public static final class LootItem
