@@ -5,7 +5,6 @@
 
 package com.communitylootshare.capture;
 
-import com.communitylootshare.domain.LootValueBasis;
 import com.communitylootshare.domain.SharedLootEvent;
 import com.communitylootshare.domain.SharedLootItem;
 import java.time.Instant;
@@ -21,18 +20,10 @@ import java.util.UUID;
 import java.util.function.Supplier;
 import javax.inject.Inject;
 import javax.inject.Singleton;
-import net.runelite.api.ItemComposition;
-import net.runelite.api.gameval.ItemID;
 import net.runelite.client.game.ItemManager;
 import net.runelite.client.game.ItemStack;
 import net.runelite.client.game.ItemVariationMapping;
 
-/**
- * Converts RuneLite loot stacks into immutable, price-snapshotted events.
- *
- * <p>The service also suppresses the same capture delivered by multiple RuneLite loot event
- * sources during a single game tick.</p>
- */
 @Singleton
 public class LootCaptureService
 {
@@ -73,24 +64,9 @@ public class LootCaptureService
 	                                                      String recipient, Instant capturedAt,
 	                                                      long captureTick)
 	{
-		return capture(sourceLabel, stacks, recipient, capturedAt, captureTick,
-			LootValueBasis.GRAND_EXCHANGE);
-	}
-
-	/**
-	 * Captures a valid item collection using the supplied valuation basis. Item quantities are
-	 * coalesced and prices are resolved now, so later price changes cannot alter the split.
-	 *
-	 * @return a new event, or empty when the input is invalid, overflows, or duplicates the prior
-	 * capture in {@code captureTick}
-	 */
-	public synchronized Optional<SharedLootEvent> capture(String sourceLabel, Collection<ItemStack> stacks,
-	                                                      String recipient, Instant capturedAt,
-	                                                      long captureTick, LootValueBasis lootValueBasis)
-	{
 		String normalizedSourceLabel = normalizeSourceLabel(sourceLabel);
 		if (normalizedSourceLabel == null || recipient == null || recipient.trim().isEmpty()
-			|| capturedAt == null || lootValueBasis == null)
+			|| capturedAt == null)
 		{
 			return Optional.empty();
 		}
@@ -115,7 +91,7 @@ public class LootCaptureService
 				{
 					continue;
 				}
-				long unitPrice = resolveUnitPrice(canonicalId, pricingId, lootValueBasis);
+				long unitPrice = resolveUnitPrice(pricingId);
 				ItemKey key = new ItemKey(stack.getId(), pricingId, unitPrice);
 				quantities.put(key, Math.addExact(quantities.getOrDefault(key, 0L), stack.getQuantity()));
 			}
@@ -162,31 +138,15 @@ public class LootCaptureService
 		return Optional.of(event);
 	}
 
-	/**
-	 * Clears the one-tick duplicate detector when a Party or profile boundary is crossed.
-	 */
 	public synchronized void resetDeduplication()
 	{
 		lastCaptureTick = Long.MIN_VALUE;
 		lastFingerprint = null;
 	}
 
-	private long resolveUnitPrice(int canonicalId, int pricingId, LootValueBasis lootValueBasis)
+	private long resolveUnitPrice(int pricingId)
 	{
-		if (lootValueBasis == LootValueBasis.GRAND_EXCHANGE)
-		{
-			return Math.max(0, itemManager.getItemPrice(pricingId));
-		}
-		if (canonicalId == ItemID.COINS)
-		{
-			return 1L;
-		}
-		if (canonicalId == ItemID.PLATINUM)
-		{
-			return 1_000L;
-		}
-		ItemComposition composition = itemManager.getItemComposition(canonicalId);
-		return composition == null ? 0L : Math.max(0, composition.getHaPrice());
+		return Math.max(0, itemManager.getItemPrice(pricingId));
 	}
 
 	private static final class ItemKey

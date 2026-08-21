@@ -82,9 +82,9 @@ public final class LootshareCalculation
 				|| value < 0L || capturedAt == null || decidedAt == null || decidedAt.isBefore(capturedAt))
 			{
 				throw new IllegalArgumentException("Included loot requires valid proposal, owner, value, and times");
-			}
-			this.proposalId = proposalId.trim();
-			this.value = value;
+		}
+		this.proposalId = proposalId.trim();
+		this.value = value;
 			this.capturedAt = capturedAt;
 			this.decidedAt = decidedAt;
 		}

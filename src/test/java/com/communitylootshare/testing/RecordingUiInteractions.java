@@ -1,0 +1,74 @@
+/*
+ * Copyright (c) 2025, pk-enjoyer
+ * SPDX-License-Identifier: BSD-2-Clause
+ */
+
+package com.communitylootshare.testing;
+
+import com.communitylootshare.ui.UiInteractionGateway;
+import java.awt.Component;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+
+public class RecordingUiInteractions implements UiInteractionGateway
+{
+	private final List<String> messages = new ArrayList<>();
+	private boolean confirmResult = true;
+	private String clipboardText;
+	private String promptResult;
+
+	@Override
+	public void showMessage(Component parent, String message)
+	{
+		messages.add(message);
+	}
+
+	@Override
+	public boolean confirm(Component parent, String title, String message)
+	{
+		return confirmResult;
+	}
+
+	@Override
+	public String prompt(Component parent, String title, String message)
+	{
+		return promptResult;
+	}
+
+	@Override
+	public void writeClipboardText(String text)
+	{
+		clipboardText = text;
+	}
+
+	public void setConfirmResult(boolean confirmResult)
+	{
+		this.confirmResult = confirmResult;
+	}
+
+	public void setClipboardText(String clipboardText)
+	{
+		this.clipboardText = clipboardText;
+	}
+
+	public void setPromptResult(String promptResult)
+	{
+		this.promptResult = promptResult;
+	}
+
+	public String getClipboardText()
+	{
+		return clipboardText;
+	}
+
+	public List<String> getMessages()
+	{
+		return Collections.unmodifiableList(messages);
+	}
+
+	public String getLastMessage()
+	{
+		return messages.isEmpty() ? null : messages.get(messages.size() - 1);
+	}
+}
