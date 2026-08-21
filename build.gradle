@@ -37,7 +37,7 @@ sourceSets {
 }
 
 group = 'com.communitylootshare'
-version = '4.0.0'
+version = '4.0.0-beta.1'
 
 tasks.withType(JavaCompile).configureEach {
 	options.encoding = 'UTF-8'
@@ -49,23 +49,10 @@ jacoco {
 }
 
 def jacocoUnitTestExcludes = [
-	'com/splitmanager/ManagerPlugin*',
-	'com/splitmanager/ManagerPanel*',
-	'com/splitmanager/PluginConfig*',
-	'com/splitmanager/controllers/**',
-	'com/splitmanager/models/SplitEvent*',
-	'com/splitmanager/models/PendingValue*',
-	'com/splitmanager/models/PlayerMetrics*',
-	'com/splitmanager/models/Transfer*',
-	'com/splitmanager/ui/**',
-	'com/splitmanager/utils/ChatStatusOverlay*',
-	'com/splitmanager/views/**'
-]
-
-def jacocoUiCoverageIncludes = [
-	'com/splitmanager/controllers/PanelController*',
-	'com/splitmanager/views/HistoryTableModel*',
-	'com/splitmanager/views/HistoryEditorPanel*'
+	'com/communitylootshare/LootsharePlugin*',
+	'com/communitylootshare/integration/**',
+	'com/communitylootshare/ui/**',
+	'com/communitylootshare/views/**'
 ]
 
 test {
@@ -100,40 +87,7 @@ jacocoTestCoverageVerification {
 	}
 }
 
-tasks.register('jacocoUiTestReport', JacocoReport) {
-	dependsOn test
-	sourceDirectories.setFrom(files(sourceSets.main.allSource.srcDirs))
-	classDirectories.setFrom(files(sourceSets.main.output.classesDirs.files.collect {
-		fileTree(dir: it, include: jacocoUiCoverageIncludes)
-	}))
-	executionData.setFrom(layout.buildDirectory.file('jacoco/test.exec'))
-	reports {
-		xml.required = true
-		html.required = true
-		html.outputLocation = layout.buildDirectory.dir('reports/jacoco/uiTest/html')
-		xml.outputLocation = layout.buildDirectory.file('reports/jacoco/uiTest/jacocoUiTestReport.xml')
-	}
-}
-
-tasks.register('jacocoUiCoverageVerification', JacocoCoverageVerification) {
-	dependsOn test
-	classDirectories.setFrom(files(sourceSets.main.output.classesDirs.files.collect {
-		fileTree(dir: it, include: jacocoUiCoverageIncludes)
-	}))
-	executionData.setFrom(layout.buildDirectory.file('jacoco/test.exec'))
-	violationRules {
-		rule {
-			limit {
-				counter = 'LINE'
-				value = 'COVEREDRATIO'
-				minimum = 0.90
-			}
-		}
-	}
-}
-
 check.dependsOn jacocoTestCoverageVerification
-check.dependsOn tasks.named('jacocoUiCoverageVerification')
 
 def isRuneLiteClientJar = { File file ->
 	file.name ==~ /client-\d+\.\d+\.\d+(\.\d+)?(-\d{8}\.\d{6}-\d+)?\.jar/ &&
@@ -169,7 +123,7 @@ tasks.register('patchedRuneliteClientJar', Jar) {
 
 tasks.register('run', JavaExec) {
 	group = 'runelite'
-	description = 'Run RuneLite with Auto Split Manager loaded in developer mode.'
+	description = 'Run RuneLite with the Community Lootshare backend loaded in developer mode.'
 	dependsOn tasks.named('patchedRuneliteClientJar')
 	classpath = files(
 		sourceSets.test.output,
@@ -177,23 +131,15 @@ tasks.register('run', JavaExec) {
 		tasks.named('patchedRuneliteClientJar'),
 		configurations.testRuntimeClasspath.filter { file -> !isRuneLiteClientJar(file) }
 	)
-	mainClass.set('com.splitmanager.PluginTest')
+	mainClass.set('com.communitylootshare.LootsharePluginTest')
+	jvmArgs '-ea'
 	args '--developer-mode', '--debug'
-}
-
-tasks.register('uiPreview', JavaExec) {
-	group = 'verification'
-	description = 'Open the Auto Split Manager Swing UI with local stub data and no RuneLite client.'
-	dependsOn tasks.named('testClasses')
-	classpath = sourceSets.test.runtimeClasspath
-	mainClass.set('com.splitmanager.views.UiPreview')
-	jvmArgs '-Djava.awt.headless=false'
 }
 
 tasks.register('shadowJar', Jar) {
 	dependsOn configurations.testRuntimeClasspath
 	manifest {
-		attributes('Main-Class': 'com.splitmanager.PluginTest', 'Multi-Release': true)
+		attributes('Main-Class': 'com.communitylootshare.LootsharePluginTest', 'Multi-Release': true)
 	}
 
 	duplicatesStrategy = DuplicatesStrategy.EXCLUDE
@@ -212,6 +158,7 @@ tasks.register('shadowJar', Jar) {
 	exclude '**/module-info.class'
 
 	group = BasePlugin.BUILD_GROUP
+	description = 'Build a runnable Community Lootshare development-client jar.'
 	archiveClassifier.set('shadow')
 	archiveFileName.set("${rootProject.name}-${project.version}-all.jar")
 }

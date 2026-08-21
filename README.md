@@ -3,145 +3,107 @@ Created with assistance from:
 https://github.com/pk-enjoyer/runelite-plugin-developer-marketplace
 -->
 
-![image](https://img.shields.io/endpoint?url=https://api.runelite.net/pluginhub/shields/installs/plugin/auto-split-manager)
-# Auto Split Manager
+# Community Lootshare
 
-Auto Split Manager is a RuneLite plugin for tracking OSRS group splits without relying on a separate spreadsheet during the raid, trip, or PK session.
+Community Lootshare 4.0 is a RuneLite plugin for host-managed, party-shared
+loot tracking. Its active sidebar can create, join, rejoin, and leave RuneLite
+Parties, control member eligibility, inspect per-member loot, and calculate the
+payments needed to settle a shared session.
 
-It keeps a session roster, records loot manually or from chat, resolves alts to mains, tracks roster changes across the session, and shows who owes or should receive at the end.
+## Current Status
 
-## What It Does
+The active Community Lootshare implementation provides:
 
-- Start and stop split sessions from the sidebar
-- Add or remove players from the active roster
-- Link alt accounts to mains so loot is attributed correctly
-- Add values manually with OSRS-style amounts like `300k`, `12.5m`, or `1b`
-- Detect values from clan chat or friends chat
-- Queue detected values for review or auto-apply them when the player is already in session
-- Recalculate fair splits when the roster changes mid-session
-- Show settlement totals and suggested payouts
-- Reopen finished sessions from history
-- Open a popout dashboard with live graphs and session stats
+- a loadable `LootsharePlugin` entry point and the stable
+  `community-lootshare` config group;
+- host-filtered NPC-drop capture from RuneLite's `ServerNpcLoot` event while the
+  local player is in a RuneLite Party, plus `LootReceived` capture for RuneLite's
+  other tracked loot sources, with identical same-tick event suppression;
+- a locally saved hosted-party policy covering NPC, activity, player,
+  pickpocket, and unknown loot sources; Grand Exchange or high-alchemy
+  valuation; the minimum value included in split calculations; and whether
+  logged-out Party members join frozen split rosters;
+- capture and Party transmission of every enabled drop regardless of its value;
+  the host's minimum only filters split calculations and never hides or blocks
+  an otherwise enabled drop;
+- revisioned host-policy synchronization: guests use the host's effective
+  policy without overwriting their own saved preferences and pause new capture
+  while waiting for a valid host snapshot;
+- immutable item and pricing IDs, quantities, captured unit prices, capture
+  timestamps, and overflow-checked event totals;
+- bounded, versioned Party proposal and decision messages whose sender identity
+  comes from RuneLite Party rather than the message payload;
+- host-controlled member eligibility: the host is always approved, new members
+  start pending, and the host can approve or exclude them from their member card;
+- automatic host decisions for every capture: approved members' loot is accepted
+  with the currently approved roster frozen into it, while pending or excluded
+  members' loot is rejected and hidden;
+- Party-scoped sessions, duplicate/conflict handling, and late-join state sync;
+- exact integer split calculation, deterministic remainder assignment, and
+  payer-to-receiver settlement transfers;
+- asynchronous, atomic, schema-versioned JSON persistence under
+  `~/.runelite/community-lootshare/`, scoped to the active RuneLite profile;
+- an active Community Lootshare sidebar with Party controls, including rejoining
+  the previous Party, first-member host election, right-click host transfer, a
+  collapsible effective-host-settings summary, eligibility badges/actions,
+  per-member loot summaries, and an auto-opening settlement section;
+- exact balance and direct-payment tables plus a reusable settlement dashboard
+  with GP/hr, highest-earnings, and settlement-balance graphs; and
+- a developer-mode-only, in-memory simulation menu for adding fake Party
+  members and deterministic sample loot without sending or persisting it.
 
-## Screenshot Placeholders
+Eligibility changes only affect future decisions. Every accepted proposal keeps
+its frozen roster, so excluding a member later does not rewrite earlier balances.
 
-> Image placeholder: main sidebar with session controls, detected values, and settlement table
->
-> Suggested file: `docs/images/sidebar-overview.png`
+## Current UI Direction
 
-> Image placeholder: detected values flow showing queued chat drops and manual apply/remove actions
->
-> Suggested file: `docs/images/detected-values.png`
+The sidebar now covers Party setup, the effective host policy, member eligibility,
+per-member loot inspection, balances, and settlement payments. The graph button
+opens one reusable settlement dashboard window and focuses it if it is already
+open. A history view, overlay, and notifications are not implemented yet.
 
-> Image placeholder: popout dashboard with session graph and summary stats
->
-> Suggested file: `docs/images/popout-dashboard.png`
+## Developer Simulation
 
-> Image placeholder: history picker with a finished session loaded
->
-> Suggested file: `docs/images/history-mode.png`
+`./gradlew run` already starts RuneLite with `--developer-mode`. In that client,
+open the Community Lootshare sidebar and use **Developer simulation** to start a
+local scenario, add or remove fake Party members, approve them from their member
+cards, choose a recipient, and add
+either a custom-value coin stack or a Tombs of Amascut reward preset: Osmumten's
+fang, Lightbearer, Masori body, or Tumeken's shadow. Item presets capture their
+current RuneLite item price automatically. Reset returns to a clean simulated
+Party; **Return to live Party** restores the real Party view.
 
-## Typical Flow
+The simulation uses a separate in-memory state engine. Fake members and sample
+loot are never inserted into RuneLite's `PartyService`, sent over Party
+messages, or written to Community Lootshare profile history. The controls are
+not available in a normal non-developer RuneLite launch.
 
-### 1. Start a session
+## Manual GP
 
-Start a new session from the plugin panel before the trip begins.
+The Party host can add a manual GP contribution to any approved member. The
+host may enable **Allow member manual GP** to let approved members add GP only
+to themselves. These contributions use the same Party-synchronised proposal,
+settlement, and persisted-history paths as captured loot; OSRS chat commands
+and chat value parsing are not supported.
 
-### 2. Build the player list
+## Development
 
-Add known players once, then add them to the active session when they are part of the split. You can also add players from the in-game chat right-click menu.
+The sources target Java 11. On the documented workstation, run Gradle with the
+Java 21 JDK because the pinned Lombok version does not compile under Java 25:
 
-If a player uses multiple accounts, link those alts to their main. Drops, pending values, and split math resolve through the main account.
+```sh
+env JAVA_HOME=/usr/lib/jvm/java-21-temurin-jdk ./gradlew test
+```
 
-### 3. Record loot
+Other useful commands are:
 
-You can record loot in three ways:
+```sh
+env JAVA_HOME=/usr/lib/jvm/java-21-temurin-jdk ./gradlew build
+env JAVA_HOME=/usr/lib/jvm/java-21-temurin-jdk ./gradlew shadowJar
+env JAVA_HOME=/usr/lib/jvm/java-21-temurin-jdk ./gradlew run
+```
 
-- Manual entry from the `Add split to session` section
-- Chat-detected PvM or PvP loot messages
-- Chat `!add` commands such as `!add 100`, `!add 1.2m`, or `!add 100, 200m 300k`
-
-When auto-apply is off, detected values land in the `Detected values` queue first so you can review them. When auto-apply is on, values are applied immediately if the player is already in the active roster.
-
-### 4. Let the plugin handle roster changes
-
-If people join late or leave early, update the session roster. The plugin keeps the split thread intact and recalculates the settlement based on who was active for each part of the session.
-
-### 5. Review settlement
-
-The settlement section shows totals, split values, and payout guidance. Negative split values mean that player owes. Positive split values mean that player should receive.
-
-You can also copy settlement output in Markdown for sharing.
-
-### 6. Review history or use the popout
-
-Finished sessions can be loaded from the `View history` section. This is useful for checking old runs, reviewing totals, or opening those sessions in the graph dashboard.
-
-The popout window gives you a wider view with the normal controls on the left and graphs on the right.
-
-## Main Features
-
-### Chat Detection
-
-The plugin can listen to clan chat and friends chat for:
-
-- PvM drops: `received a drop: ... (N coins)`
-- PvP loot: `has defeated ... and received (N coins) worth of loot!`
-- Player commands: `!add ...`
-
-Detected amounts are stored as raw coin values, even if you enter them with `k`, `m`, or `b`.
-
-### Session-Aware Split Tracking
-
-The plugin does not treat the whole trip as one flat roster. When the team changes after loot has already been recorded, it tracks the session in segments so the final split stays fair.
-
-### Alt-To-Main Resolution
-
-Known alts can be linked to a main account. This prevents split totals from being fragmented across different character names.
-
-### Popout Dashboard
-
-The popout dashboard adds a wider working view and session graph modes:
-
-- `GP/hr over time`
-- `Highest earnings`
-- `Settlement balance`
-
-It also shows quick session stats such as total loot, GP/hr, and top earner.
-
-### Session History
-
-Stopped sessions are kept in history and can be reopened later. This makes it possible to review past sessions without keeping separate notes outside the plugin.
-
-## Configuration Highlights
-
-### General
-
-- Guided tour toggle
-- Default value multiplier for shorthand manual entry
-- Custom time and date formats
-
-### Settlement
-
-- Discord-friendly Markdown copy
-- Settlement display options
-
-### Chat Detection
-
-- Master enable/disable toggle
-- Separate clan chat and friends chat toggles
-- PvM, PvP, and `!add` detection toggles
-- Auto-apply for players already in session
-- Regex overrides for advanced chat parsing setups
-
-## Notes
-
-- This plugin is aimed at the user running the split and keeping the active session accurate.
-- It is most useful when the roster is updated as people join or leave instead of fixing everything after the trip.
-
-## Development UI Testing
-
-Run `./gradlew test` for the headless JUnit suite and `./gradlew check` to enforce a 95% domain
-line-coverage gate plus a separate 90% gate for the extracted UI layer. Run `./gradlew uiPreview`
-to open the sidebar, popout dashboard, and history editor with local stub data; the preview does
-not start RuneLite or connect to RuneScape.
+`./gradlew run` starts RuneLite in developer/debug mode with assertions enabled,
+loads `com.communitylootshare.LootsharePlugin`, and exercises the
+active event/Party/persistence/UI boundary. It does not automate login or
+gameplay.
