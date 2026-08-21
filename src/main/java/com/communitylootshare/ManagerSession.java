@@ -5,18 +5,18 @@
 
 package com.communitylootshare;
 
-import com.google.gson.Gson;
-import com.communitylootshare.models.SplitEvent;
 import com.communitylootshare.models.PendingValue;
 import com.communitylootshare.models.PlayerMetrics;
 import com.communitylootshare.models.Session;
 import com.communitylootshare.models.SettlementConfigSnapshot;
+import com.communitylootshare.models.SplitEvent;
 import com.communitylootshare.persistence.SessionStorage;
 import com.communitylootshare.persistence.SessionStorageData;
 import com.communitylootshare.sessions.SplitCalculator;
 import com.communitylootshare.sessions.SplitThreadAdapter;
 import com.communitylootshare.utils.Formats;
 import com.communitylootshare.utils.InstantTypeAdapter;
+import com.google.gson.Gson;
 import java.text.ParseException;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -104,6 +104,42 @@ public class ManagerSession
 	private static String emptyToNull(String s)
 	{
 		return s == null || s.isEmpty() ? null : s;
+	}
+
+	private static boolean isVersionBefore(String version, String minimumVersion)
+	{
+		if (version == null || version.trim().isEmpty())
+		{
+			return true;
+		}
+		int[] parsedVersion = parseVersion(version);
+		int[] parsedMinimum = parseVersion(minimumVersion);
+		for (int i = 0; i < parsedMinimum.length; i++)
+		{
+			if (parsedVersion[i] != parsedMinimum[i])
+			{
+				return parsedVersion[i] < parsedMinimum[i];
+			}
+		}
+		return false;
+	}
+
+	private static int[] parseVersion(String version)
+	{
+		int[] parts = new int[]{0, 0, 0};
+		String[] tokens = version.split("\\.");
+		for (int i = 0; i < parts.length && i < tokens.length; i++)
+		{
+			try
+			{
+				parts[i] = Integer.parseInt(tokens[i].replaceAll("[^0-9].*$", ""));
+			}
+			catch (NumberFormatException e)
+			{
+				parts[i] = 0;
+			}
+		}
+		return parts;
 	}
 
 	/**
@@ -790,28 +826,6 @@ public class ManagerSession
 			}
 		}
 		return false;
-	}
-
-	private static final class TimelineValidation
-	{
-		private final boolean valid;
-		private final String message;
-
-		private TimelineValidation(boolean valid, String message)
-		{
-			this.valid = valid;
-			this.message = message;
-		}
-
-		private static TimelineValidation valid()
-		{
-			return new TimelineValidation(true, null);
-		}
-
-		private static TimelineValidation invalid(String message)
-		{
-			return new TimelineValidation(false, message);
-		}
 	}
 
 	private String resolveMainName(String player)
@@ -1926,42 +1940,6 @@ public class ManagerSession
 		return false;
 	}
 
-	private static boolean isVersionBefore(String version, String minimumVersion)
-	{
-		if (version == null || version.trim().isEmpty())
-		{
-			return true;
-		}
-		int[] parsedVersion = parseVersion(version);
-		int[] parsedMinimum = parseVersion(minimumVersion);
-		for (int i = 0; i < parsedMinimum.length; i++)
-		{
-			if (parsedVersion[i] != parsedMinimum[i])
-			{
-				return parsedVersion[i] < parsedMinimum[i];
-			}
-		}
-		return false;
-	}
-
-	private static int[] parseVersion(String version)
-	{
-		int[] parts = new int[]{0, 0, 0};
-		String[] tokens = version.split("\\.");
-		for (int i = 0; i < parts.length && i < tokens.length; i++)
-		{
-			try
-			{
-				parts[i] = Integer.parseInt(tokens[i].replaceAll("[^0-9].*$", ""));
-			}
-			catch (NumberFormatException e)
-			{
-				parts[i] = 0;
-			}
-		}
-		return parts;
-	}
-
 	public void markHistoryMutation()
 	{
 		clearHistoryEditUndo();
@@ -2263,7 +2241,6 @@ public class ManagerSession
 		return thread;
 	}
 
-
 	/**
 	 * Get all events from all sessions that share the same mother session as the current session.
 	 * Uses a cached list per mother to avoid recomputing on every UI update.
@@ -2299,13 +2276,34 @@ public class ManagerSession
 		return Collections.unmodifiableList(built);
 	}
 
-
 	/**
 	 * Generate a random unique id for sessions.
 	 */
 	private String newId()
 	{
 		return UUID.randomUUID().toString();
+	}
+
+	private static final class TimelineValidation
+	{
+		private final boolean valid;
+		private final String message;
+
+		private TimelineValidation(boolean valid, String message)
+		{
+			this.valid = valid;
+			this.message = message;
+		}
+
+		private static TimelineValidation valid()
+		{
+			return new TimelineValidation(true, null);
+		}
+
+		private static TimelineValidation invalid(String message)
+		{
+			return new TimelineValidation(false, message);
+		}
 	}
 
 	private static final class HistoryEditSnapshot

@@ -96,6 +96,12 @@ public class ManagerPanel implements PanelCoordinator
 		}
 	}
 
+	@Override
+	public void showPopout(boolean editMode)
+	{
+		togglePopOutWindow(editMode);
+	}
+
 	/**
 	 * Initialize and wire the view and controller, and perform an initial sync.
 	 */
@@ -150,13 +156,6 @@ public class ManagerPanel implements PanelCoordinator
 		popoutController = null;
 		popoutView = null;
 	}
-
-	@Override
-	public void showPopout(boolean editMode)
-	{
-		togglePopOutWindow(editMode);
-	}
-
 
 	/**
 	 * Recreate the panel components from scratch.

@@ -5,6 +5,7 @@
 
 package com.communitylootshare.domain;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -15,16 +16,29 @@ public final class LootshareCalculation
 	private final long totalAcceptedValue;
 	private final List<Balance> balances;
 	private final List<Transfer> transfers;
+	private final List<IncludedLoot> includedLoot;
 
 	public LootshareCalculation(long totalAcceptedValue, List<Balance> balances, List<Transfer> transfers)
 	{
-		if (totalAcceptedValue < 0L || balances == null || transfers == null)
+		this(totalAcceptedValue, balances, transfers, Collections.emptyList());
+	}
+
+	public LootshareCalculation(long totalAcceptedValue, List<Balance> balances, List<Transfer> transfers,
+	                            List<IncludedLoot> includedLoot)
+	{
+		if (totalAcceptedValue < 0L || balances == null || transfers == null || includedLoot == null)
 		{
 			throw new IllegalArgumentException("Calculation totals and result lists are required");
 		}
 		this.totalAcceptedValue = totalAcceptedValue;
 		this.balances = Collections.unmodifiableList(new ArrayList<>(balances));
 		this.transfers = Collections.unmodifiableList(new ArrayList<>(transfers));
+		List<IncludedLoot> includedLootCopy = new ArrayList<>(includedLoot);
+		if (includedLootCopy.stream().anyMatch(java.util.Objects::isNull))
+		{
+			throw new IllegalArgumentException("Included loot entries cannot be null");
+		}
+		this.includedLoot = Collections.unmodifiableList(includedLootCopy);
 	}
 
 	public static LootshareCalculation empty()
@@ -45,6 +59,70 @@ public final class LootshareCalculation
 	public List<Transfer> getTransfers()
 	{
 		return transfers;
+	}
+
+	public List<IncludedLoot> getIncludedLoot()
+	{
+		return includedLoot;
+	}
+
+	@EqualsAndHashCode
+	public static final class IncludedLoot
+	{
+		private final String proposalId;
+		private final long ownerMemberId;
+		private final String ownerDisplayName;
+		private final long value;
+		private final Instant capturedAt;
+		private final Instant decidedAt;
+
+		public IncludedLoot(String proposalId, long ownerMemberId, String ownerDisplayName, long value,
+		                    Instant capturedAt, Instant decidedAt)
+		{
+			LootshareParticipant owner = new LootshareParticipant(ownerMemberId, ownerDisplayName);
+			if (proposalId == null || proposalId.trim().isEmpty()
+				|| proposalId.trim().length() > SharedLootEvent.MAX_PROPOSAL_ID_LENGTH
+				|| value < 0L || capturedAt == null || decidedAt == null || decidedAt.isBefore(capturedAt))
+			{
+				throw new IllegalArgumentException("Included loot requires valid proposal, owner, value, and times");
+			}
+			this.proposalId = proposalId.trim();
+			this.ownerMemberId = owner.getMemberId();
+			this.ownerDisplayName = owner.getDisplayName();
+			this.value = value;
+			this.capturedAt = capturedAt;
+			this.decidedAt = decidedAt;
+		}
+
+		public String getProposalId()
+		{
+			return proposalId;
+		}
+
+		public long getOwnerMemberId()
+		{
+			return ownerMemberId;
+		}
+
+		public String getOwnerDisplayName()
+		{
+			return ownerDisplayName;
+		}
+
+		public long getValue()
+		{
+			return value;
+		}
+
+		public Instant getCapturedAt()
+		{
+			return capturedAt;
+		}
+
+		public Instant getDecidedAt()
+		{
+			return decidedAt;
+		}
 	}
 
 	@EqualsAndHashCode
@@ -90,7 +168,9 @@ public final class LootshareCalculation
 			return entitledValue;
 		}
 
-		/** Positive means the member should receive; negative means the member should pay. */
+		/**
+		 * Positive means the member should receive; negative means the member should pay.
+		 */
 		public long getNetValue()
 		{
 			return netValue;

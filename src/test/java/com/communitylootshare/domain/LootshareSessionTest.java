@@ -7,6 +7,8 @@ package com.communitylootshare.domain;
 
 import java.time.Instant;
 import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
@@ -19,6 +21,11 @@ public class LootshareSessionTest
 	public void sessionStoresAcceptedProposalsInDecisionOrderAndSnapshotsState()
 	{
 		LootshareSession session = new LootshareSession(" session ", 10L, Instant.EPOCH);
+		LootshareSettings settings = new LootshareSettings(250L, LootValueBasis.HIGH_ALCHEMY,
+			true, false, true, false, true, true);
+		Map<Long, MemberApprovalStatus> approvals = new LinkedHashMap<>();
+		approvals.put(5L, MemberApprovalStatus.EXCLUDED);
+		session.setHostState(4L, settings, 2L, approvals);
 		LootProposal later = accepted("later", 10L, Instant.ofEpochSecond(3));
 		LootProposal earlier = accepted("earlier", 10L, Instant.ofEpochSecond(2));
 
@@ -34,6 +41,15 @@ public class LootshareSessionTest
 
 		LootshareSession snapshot = session.snapshot();
 		assertEquals(2, snapshot.getAcceptedProposals().size());
+		assertEquals(4L, snapshot.getHostMemberId());
+		assertEquals(250L, snapshot.getMinimumSharedLootValue());
+		assertEquals(settings, snapshot.getHostSettings());
+		assertEquals(2L, snapshot.getHostRevision());
+		assertEquals(MemberApprovalStatus.APPROVED, snapshot.getMemberApprovalStatus(4L));
+		assertEquals(MemberApprovalStatus.EXCLUDED, snapshot.getMemberApprovalStatus(5L));
+		assertEquals(MemberApprovalStatus.PENDING, snapshot.getMemberApprovalStatus(6L));
+		session.clearHost();
+		assertEquals(0L, session.getHostMemberId());
 		assertTrue(session.end(Instant.ofEpochSecond(5)));
 		assertFalse(session.end(Instant.ofEpochSecond(6)));
 		assertFalse(session.isActive());
@@ -61,6 +77,24 @@ public class LootshareSessionTest
 		expectIllegal(() -> new LootshareSession("s", 1L, null));
 
 		LootshareSession session = new LootshareSession("s", 1L, Instant.ofEpochSecond(5));
+		expectIllegal(() -> session.setHostState(-1L, LootshareSettings.defaults(), 1L));
+		expectIllegal(() -> session.setHostState(1L, (LootshareSettings) null, 1L));
+		expectIllegal(() -> session.setHostState(1L, LootshareSettings.defaults(), 0L));
+		expectIllegal(() -> session.setHostState(1L, LootshareSettings.defaults(), 1L, null));
+		expectIllegal(() -> session.getMemberApprovalStatus(0L));
+		Map<Long, MemberApprovalStatus> tooManyApprovals = new LinkedHashMap<>();
+		for (long memberId = 1L; memberId <= LootshareSession.MAX_MEMBER_APPROVALS + 1L; memberId++)
+		{
+			tooManyApprovals.put(memberId, MemberApprovalStatus.APPROVED);
+		}
+		expectIllegal(() -> session.setHostState(1L, LootshareSettings.defaults(), 1L, tooManyApprovals));
+		Map<Long, MemberApprovalStatus> fullWithoutHost = new LinkedHashMap<>();
+		for (long memberId = 2L; memberId <= LootshareSession.MAX_MEMBER_APPROVALS + 1L; memberId++)
+		{
+			fullWithoutHost.put(memberId, MemberApprovalStatus.APPROVED);
+		}
+		expectIllegal(() -> session.setHostState(1L, LootshareSettings.defaults(), 1L, fullWithoutHost));
+		expectIllegal(() -> session.setHostState(1L, -1L, 1L));
 		expectIllegal(() -> session.addAcceptedProposal(null));
 		expectIllegal(() -> session.addAcceptedProposal(LootProposal.pending(1L, 1L, event("p", 1L))));
 		expectIllegal(() -> session.addAcceptedProposal(accepted("p", 2L, Instant.ofEpochSecond(6))));

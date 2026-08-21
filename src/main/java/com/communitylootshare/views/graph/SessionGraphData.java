@@ -5,9 +5,9 @@
 
 package com.communitylootshare.views.graph;
 
-import com.communitylootshare.models.SplitEvent;
 import com.communitylootshare.models.PlayerMetrics;
 import com.communitylootshare.models.Session;
+import com.communitylootshare.models.SplitEvent;
 import com.communitylootshare.utils.Formats;
 import java.time.Duration;
 import java.time.Instant;

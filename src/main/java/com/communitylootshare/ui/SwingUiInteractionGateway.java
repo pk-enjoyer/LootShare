@@ -38,6 +38,19 @@ public class SwingUiInteractionGateway implements UiInteractionGateway
 	}
 
 	@Override
+	public String prompt(Component parent, String title, String message)
+	{
+		return (String) JOptionPane.showInputDialog(
+			parent,
+			message,
+			title,
+			JOptionPane.PLAIN_MESSAGE,
+			null,
+			null,
+			"");
+	}
+
+	@Override
 	public HistoryExportChoice chooseHistoryExport(Component parent)
 	{
 		Object[] options = {"All history", "Selected session", "Cancel"};

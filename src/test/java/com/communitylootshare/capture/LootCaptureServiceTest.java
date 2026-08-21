@@ -5,6 +5,7 @@
 
 package com.communitylootshare.capture;
 
+import com.communitylootshare.domain.LootValueBasis;
 import com.communitylootshare.domain.SharedLootEvent;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -13,10 +14,10 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
+import net.runelite.api.ItemComposition;
+import net.runelite.api.gameval.ItemID;
 import net.runelite.client.game.ItemManager;
 import net.runelite.client.game.ItemStack;
-import net.runelite.client.plugins.loottracker.LootReceived;
-import net.runelite.http.api.loottracker.LootRecordType;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
@@ -44,11 +45,11 @@ public class LootCaptureServiceTest
 	}
 
 	@Test
-	public void capturesAggregatedCanonicalPriceSnapshotsAtThreshold()
+	public void capturesAggregatedCanonicalPriceSnapshots()
 	{
-		LootReceived received = loot("Boss", Arrays.asList(new ItemStack(100, 2), new ItemStack(100, 1)));
-		Optional<SharedLootEvent> result = service.capture(received, "Alice",
-			Instant.ofEpochSecond(1, 123_456_789L), 5L, 150L);
+		List<ItemStack> stacks = Arrays.asList(new ItemStack(100, 2), new ItemStack(100, 1));
+		Optional<SharedLootEvent> result = service.capture("Boss", stacks, "Alice",
+			Instant.ofEpochSecond(1, 123_456_789L), 5L);
 
 		assertTrue(result.isPresent());
 		SharedLootEvent event = result.get();
@@ -66,47 +67,84 @@ public class LootCaptureServiceTest
 	}
 
 	@Test
+	public void capturesEveryItemInAnNpcDropIncludingZeroValueItems()
+	{
+		when(itemManager.getItemPrice(100)).thenReturn(100_000);
+		when(itemManager.getItemPrice(101)).thenReturn(25);
+		when(itemManager.getItemPrice(102)).thenReturn(0);
+		List<ItemStack> stacks = Arrays.asList(
+			new ItemStack(100, 1), new ItemStack(101, 4), new ItemStack(102, 3));
+
+		SharedLootEvent event = service.capture("Boss", stacks, "Alice",
+			Instant.EPOCH, 6L).get();
+
+		assertEquals(3, event.getItems().size());
+		assertEquals(100, event.getItems().get(0).getItemId());
+		assertEquals(1L, event.getItems().get(0).getQuantity());
+		assertEquals(101, event.getItems().get(1).getItemId());
+		assertEquals(4L, event.getItems().get(1).getQuantity());
+		assertEquals(102, event.getItems().get(2).getItemId());
+		assertEquals(3L, event.getItems().get(2).getQuantity());
+		assertEquals(100_100L, event.getTotal());
+	}
+
+	@Test
+	public void capturesHighAlchemyPricesAndCurrencyFaceValues()
+	{
+		ItemComposition composition = mock(ItemComposition.class);
+		when(composition.getHaPrice()).thenReturn(75);
+		when(itemManager.getItemComposition(100)).thenReturn(composition);
+		List<ItemStack> stacks = Arrays.asList(
+			new ItemStack(100, 2), new ItemStack(ItemID.COINS, 25), new ItemStack(ItemID.PLATINUM, 2));
+
+		SharedLootEvent event = service.capture("Boss", stacks, "Alice", Instant.EPOCH, 7L,
+			LootValueBasis.HIGH_ALCHEMY).get();
+
+		assertEquals(75L, event.getItems().get(0).getUnitPrice());
+		assertEquals(1L, event.getItems().get(1).getUnitPrice());
+		assertEquals(1_000L, event.getItems().get(2).getUnitPrice());
+		assertEquals(2_175L, event.getTotal());
+	}
+
+	@Test
 	public void suppressesOnlyIdenticalSameTickCapturesAndCanReset()
 	{
-		LootReceived received = loot("Boss", Collections.singletonList(new ItemStack(100, 2)));
-		assertTrue(service.capture(received, "Alice", Instant.EPOCH, 10L, 0L).isPresent());
-		assertFalse(service.capture(received, "Alice", Instant.EPOCH.plusSeconds(1), 10L, 0L).isPresent());
-		assertTrue(service.capture(received, "Alice", Instant.EPOCH.plusSeconds(2), 11L, 0L).isPresent());
+		List<ItemStack> stacks = Collections.singletonList(new ItemStack(100, 2));
+		assertTrue(service.capture("Boss", stacks, "Alice", Instant.EPOCH, 10L).isPresent());
+		assertFalse(service.capture("Boss", stacks, "Alice", Instant.EPOCH.plusSeconds(1), 10L).isPresent());
+		assertTrue(service.capture("Boss", stacks, "Alice", Instant.EPOCH.plusSeconds(2), 11L).isPresent());
 		service.resetDeduplication();
-		assertTrue(service.capture(received, "Alice", Instant.EPOCH.plusSeconds(3), 11L, 0L).isPresent());
+		assertTrue(service.capture("Boss", stacks, "Alice", Instant.EPOCH.plusSeconds(3), 11L).isPresent());
 	}
 
 	@Test
-	public void ignoresBelowThresholdAndInvalidCaptureInputs()
+	public void capturesLowValueDropsAndRejectsInvalidCaptureInputs()
 	{
-		LootReceived oneItem = loot("Boss", Collections.singletonList(new ItemStack(100, 1)));
-		assertFalse(service.capture(oneItem, "Alice", Instant.EPOCH, 1L, 51L).isPresent());
-		assertFalse(service.capture(null, "Alice", Instant.EPOCH, 1L, 0L).isPresent());
-		assertFalse(service.capture(oneItem, null, Instant.EPOCH, 1L, 0L).isPresent());
-		assertFalse(service.capture(oneItem, " ", Instant.EPOCH, 1L, 0L).isPresent());
-		assertFalse(service.capture(oneItem, "Alice", null, 1L, 0L).isPresent());
-		assertFalse(service.capture(oneItem, "Alice", Instant.EPOCH, 1L, -1L).isPresent());
-		assertFalse(service.capture(loot("Boss", null), "Alice", Instant.EPOCH, 1L, 0L).isPresent());
-		assertFalse(service.capture(loot("Boss", Collections.emptyList()), "Alice", Instant.EPOCH, 1L, 0L).isPresent());
-		assertFalse(service.capture(loot("Boss", Arrays.asList(null, new ItemStack(-1, 1), new ItemStack(2, 0))),
-			"Alice", Instant.EPOCH, 1L, 0L).isPresent());
+		List<ItemStack> oneItem = Collections.singletonList(new ItemStack(100, 1));
+		assertTrue(service.capture("Boss", oneItem, "Alice", Instant.EPOCH, 1L).isPresent());
+		assertFalse(service.capture(null, oneItem, "Alice", Instant.EPOCH, 1L).isPresent());
+		assertFalse(service.capture(" ", oneItem, "Alice", Instant.EPOCH, 1L).isPresent());
+		assertFalse(service.capture("Boss", oneItem, null, Instant.EPOCH, 1L).isPresent());
+		assertFalse(service.capture("Boss", oneItem, " ", Instant.EPOCH, 1L).isPresent());
+		assertFalse(service.capture("Boss", oneItem, "Alice", null, 1L).isPresent());
+		assertFalse(service.capture("Boss", null, "Alice", Instant.EPOCH, 1L).isPresent());
+		assertFalse(service.capture("Boss", Collections.emptyList(), "Alice", Instant.EPOCH, 1L).isPresent());
+		assertFalse(service.capture("Boss", oneItem, "Alice", Instant.EPOCH, 1L, null).isPresent());
+		assertFalse(service.capture("Boss", Arrays.asList(null, new ItemStack(-1, 1), new ItemStack(2, 0)),
+			"Alice", Instant.EPOCH, 1L).isPresent());
 	}
 
 	@Test
-	public void fallsBackToTypeTruncatesLabelsAndSkipsInvalidPricingIds()
+	public void truncatesLabelsAndSkipsInvalidPricingIds()
 	{
-		LootReceived unnamed = new LootReceived(" ", 0, LootRecordType.NPC,
-			Collections.singletonList(new ItemStack(100, 1)), 1, null);
-		assertEquals("NPC", service.capture(unnamed, "Alice", Instant.EPOCH, 1L, 0L).get().getSourceLabel());
-
 		String longName = String.join("", Collections.nCopies(200, "x"));
 		assertEquals(SharedLootEvent.MAX_SOURCE_LABEL_LENGTH,
-			service.capture(loot(longName, Collections.singletonList(new ItemStack(101, 1))),
-				"Alice", Instant.EPOCH, 2L, 0L).get().getSourceLabel().length());
+			service.capture(longName, Collections.singletonList(new ItemStack(101, 1)),
+				"Alice", Instant.EPOCH, 2L).get().getSourceLabel().length());
 
 		when(itemManager.canonicalize(102)).thenReturn(-1);
-		assertFalse(service.capture(loot("Boss", Collections.singletonList(new ItemStack(102, 1))),
-			"Alice", Instant.EPOCH, 3L, 0L).isPresent());
+		assertFalse(service.capture("Boss", Collections.singletonList(new ItemStack(102, 1)),
+			"Alice", Instant.EPOCH, 3L).isPresent());
 	}
 
 	@Test
@@ -117,15 +155,10 @@ public class LootCaptureServiceTest
 		{
 			tooMany.add(new ItemStack(100_000 + index, 1));
 		}
-		assertFalse(service.capture(loot("Boss", tooMany), "Alice", Instant.EPOCH, 1L, 0L).isPresent());
+		assertFalse(service.capture("Boss", tooMany, "Alice", Instant.EPOCH, 1L).isPresent());
 
 		LootCaptureService badIds = new LootCaptureService(itemManager, () -> " ");
-		assertFalse(badIds.capture(loot("Boss", Collections.singletonList(new ItemStack(100, 1))),
-			"Alice", Instant.EPOCH, 1L, 0L).isPresent());
-	}
-
-	private static LootReceived loot(String name, List<ItemStack> items)
-	{
-		return new LootReceived(name, 0, LootRecordType.NPC, items, 1, null);
+		assertFalse(badIds.capture("Boss", Collections.singletonList(new ItemStack(100, 1)),
+			"Alice", Instant.EPOCH, 1L).isPresent());
 	}
 }

@@ -5,7 +5,6 @@
 
 package com.communitylootshare.views;
 
-import com.formdev.flatlaf.extras.FlatSVGIcon;
 import com.communitylootshare.ManagerSession;
 import com.communitylootshare.PluginConfig;
 import com.communitylootshare.controllers.PanelActions;
@@ -13,6 +12,7 @@ import com.communitylootshare.models.Session;
 import com.communitylootshare.models.SplitEvent;
 import com.communitylootshare.ui.UiInteractionGateway;
 import com.communitylootshare.views.components.PanelTheme;
+import com.formdev.flatlaf.extras.FlatSVGIcon;
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Component;

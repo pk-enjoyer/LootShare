@@ -17,7 +17,7 @@ import lombok.EqualsAndHashCode;
 @EqualsAndHashCode
 public final class LootProposal
 {
-	public static final int MAX_PARTICIPANTS = 64;
+	public static final int MAX_PARTICIPANTS = 64; // TODO Is this equal to the party hub plugin?
 
 	private final long partyId;
 	private final long ownerMemberId;
@@ -74,6 +74,31 @@ public final class LootProposal
 			Collections.emptyList());
 	}
 
+	private static List<LootshareParticipant> validateParticipants(List<LootshareParticipant> participants)
+	{
+		if (participants == null)
+		{
+			throw new IllegalArgumentException("Split roster is required");
+		}
+		if (participants.size() > MAX_PARTICIPANTS)
+		{
+			throw new IllegalArgumentException("Split roster cannot exceed " + MAX_PARTICIPANTS + " members");
+		}
+
+		Set<Long> seenMemberIds = new HashSet<>();
+		List<LootshareParticipant> copy = new ArrayList<>(participants.size());
+		for (LootshareParticipant participant : participants)
+		{
+			if (participant == null || !seenMemberIds.add(participant.getMemberId()))
+			{
+				throw new IllegalArgumentException("Split roster members must be non-null and unique");
+			}
+			copy.add(new LootshareParticipant(participant.getMemberId(), participant.getDisplayName()));
+		}
+		copy.sort(Comparator.comparingLong(LootshareParticipant::getMemberId));
+		return copy;
+	}
+
 	public LootProposal decide(LootProposalStatus decision, Instant at, List<LootshareParticipant> splitRoster)
 	{
 		if (status != LootProposalStatus.PENDING)
@@ -108,31 +133,6 @@ public final class LootProposal
 			&& partyId == other.partyId
 			&& ownerMemberId == other.ownerMemberId
 			&& event.equals(other.event);
-	}
-
-	private static List<LootshareParticipant> validateParticipants(List<LootshareParticipant> participants)
-	{
-		if (participants == null)
-		{
-			throw new IllegalArgumentException("Split roster is required");
-		}
-		if (participants.size() > MAX_PARTICIPANTS)
-		{
-			throw new IllegalArgumentException("Split roster cannot exceed " + MAX_PARTICIPANTS + " members");
-		}
-
-		Set<Long> seenMemberIds = new HashSet<>();
-		List<LootshareParticipant> copy = new ArrayList<>(participants.size());
-		for (LootshareParticipant participant : participants)
-		{
-			if (participant == null || !seenMemberIds.add(participant.getMemberId()))
-			{
-				throw new IllegalArgumentException("Split roster members must be non-null and unique");
-			}
-			copy.add(new LootshareParticipant(participant.getMemberId(), participant.getDisplayName()));
-		}
-		copy.sort(Comparator.comparingLong(LootshareParticipant::getMemberId));
-		return copy;
 	}
 
 	public long getPartyId()

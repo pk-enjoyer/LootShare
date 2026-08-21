@@ -5,17 +5,16 @@
 
 package com.communitylootshare.views;
 
-import com.formdev.flatlaf.extras.FlatSVGIcon;
 import com.communitylootshare.ManagerKnownPlayers;
 import com.communitylootshare.ManagerSession;
 import com.communitylootshare.PluginConfig;
 import com.communitylootshare.controllers.PanelActions;
-import com.communitylootshare.models.SplitEvent;
 import com.communitylootshare.models.Metrics;
 import com.communitylootshare.models.PlayerMetrics;
 import com.communitylootshare.models.RecentSplitsTable;
 import com.communitylootshare.models.Session;
 import com.communitylootshare.models.SettlementConfigSnapshot;
+import com.communitylootshare.models.SplitEvent;
 import com.communitylootshare.models.Transfer;
 import com.communitylootshare.models.WaitlistTable;
 import com.communitylootshare.ui.SwingUiInteractionGateway;
@@ -28,6 +27,7 @@ import com.communitylootshare.views.components.PanelTheme;
 import com.communitylootshare.views.components.PanelTour;
 import com.communitylootshare.views.components.table.RemoveButtonEditor;
 import com.communitylootshare.views.components.table.RemoveButtonRenderer;
+import com.formdev.flatlaf.extras.FlatSVGIcon;
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Component;
@@ -150,7 +150,8 @@ public class PanelView extends JPanel
 	private final PanelTour tour;
 	private PanelActions actions;
 	private Runnable pencilAction;
-	private Runnable metricsRefreshedAction = () -> { };
+	private Runnable metricsRefreshedAction = () -> {
+	};
 	private JButton btnCopyJson;
 	private JButton btnCopyMd;
 	private DropdownRip knownPlayersInfoDropdown;
@@ -1194,7 +1195,8 @@ public class PanelView extends JPanel
 
 	public void setMetricsRefreshedAction(Runnable metricsRefreshedAction)
 	{
-		this.metricsRefreshedAction = metricsRefreshedAction == null ? () -> { } : metricsRefreshedAction;
+		this.metricsRefreshedAction = metricsRefreshedAction == null ? () -> {
+		} : metricsRefreshedAction;
 	}
 
 	private JComponent generateHistoryPanel()

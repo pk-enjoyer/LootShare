@@ -5,8 +5,8 @@
 
 package com.communitylootshare;
 
-import com.google.gson.Gson;
 import com.communitylootshare.utils.InstantTypeAdapter;
+import com.google.gson.Gson;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;

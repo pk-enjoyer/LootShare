@@ -5,7 +5,6 @@
 
 package com.communitylootshare;
 
-import com.google.inject.Provides;
 import com.communitylootshare.chat.ChatDetectionService;
 import com.communitylootshare.chat.ChatSource;
 import com.communitylootshare.models.PendingValue;
@@ -13,6 +12,7 @@ import com.communitylootshare.models.Session;
 import com.communitylootshare.utils.ChatStatusOverlay;
 import com.communitylootshare.utils.Formats;
 import com.communitylootshare.views.RuneLitePanelHost;
+import com.google.inject.Provides;
 import java.awt.image.BufferedImage;
 import java.util.Arrays;
 import java.util.List;

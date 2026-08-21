@@ -8,17 +8,29 @@ package com.communitylootshare.domain;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 public final class LootshareSession
 {
 	public static final int MAX_ACCEPTED_PROPOSALS = 4096;
+	public static final int MAX_MEMBER_APPROVALS = 64;
+	public static final long MAXIMUM_SHARED_LOOT_VALUE = LootshareSettings.MAXIMUM_SHARED_LOOT_VALUE;
 
 	private final String sessionId;
 	private final long partyId;
 	private final Instant startedAt;
-	private Instant endedAt;
 	private final List<LootProposal> acceptedProposals = new ArrayList<>();
+	private Instant endedAt;
+	private long hostMemberId;
+	/**
+	 * Retained so schema-2 snapshots written before the full host policy can still be restored.
+	 */
+	private long minimumSharedLootValue;
+	private LootshareSettings hostSettings;
+	private long hostRevision;
+	private Map<Long, MemberApprovalStatus> memberApprovalStatuses = new LinkedHashMap<>();
 
 	public LootshareSession(String sessionId, long partyId, Instant startedAt)
 	{
@@ -83,6 +95,7 @@ public final class LootshareSession
 	public LootshareSession snapshot()
 	{
 		LootshareSession copy = new LootshareSession(sessionId, partyId, startedAt);
+		copy.setHostState(hostMemberId, getHostSettings(), hostRevision, getMemberApprovalStatuses());
 		for (LootProposal proposal : acceptedProposals)
 		{
 			copy.addAcceptedProposal(proposal);
@@ -117,6 +130,117 @@ public final class LootshareSession
 	public boolean isActive()
 	{
 		return endedAt == null;
+	}
+
+	public void setHostState(long hostMemberId, long minimumSharedLootValue, long hostRevision)
+	{
+		setHostState(hostMemberId, LootshareSettings.defaults(minimumSharedLootValue), hostRevision);
+	}
+
+	public void setHostState(long hostMemberId, LootshareSettings hostSettings, long hostRevision)
+	{
+		setHostState(hostMemberId, hostSettings, hostRevision, getMemberApprovalStatuses());
+	}
+
+	public void setHostState(long hostMemberId, LootshareSettings hostSettings, long hostRevision,
+	                         Map<Long, MemberApprovalStatus> approvalStatuses)
+	{
+		if (hostMemberId < 0L || hostSettings == null || hostRevision < 0L
+			|| (hostMemberId > 0L && hostRevision == 0L) || approvalStatuses == null)
+		{
+			throw new IllegalArgumentException("Host state contains an invalid member, settings, or revision");
+		}
+		if (approvalStatuses.size() > MAX_MEMBER_APPROVALS)
+		{
+			throw new IllegalArgumentException("Host state contains too many member approvals");
+		}
+		Map<Long, MemberApprovalStatus> validatedStatuses = new LinkedHashMap<>();
+		for (Map.Entry<Long, MemberApprovalStatus> entry : approvalStatuses.entrySet())
+		{
+			Long memberId = entry.getKey();
+			MemberApprovalStatus status = entry.getValue();
+			if (memberId == null || memberId <= 0L || status == null)
+			{
+				throw new IllegalArgumentException("Host state contains an invalid member approval");
+			}
+			if (status != MemberApprovalStatus.PENDING)
+			{
+				validatedStatuses.put(memberId, status);
+			}
+		}
+		if (hostMemberId > 0L)
+		{
+			validatedStatuses.put(hostMemberId, MemberApprovalStatus.APPROVED);
+		}
+		if (validatedStatuses.size() > MAX_MEMBER_APPROVALS)
+		{
+			throw new IllegalArgumentException("Host state contains too many member approvals");
+		}
+		LootshareSettings validatedSettings = hostSettings.validatedCopy();
+		this.hostMemberId = hostMemberId;
+		this.minimumSharedLootValue = validatedSettings.getMinimumSharedLootValue();
+		this.hostSettings = validatedSettings;
+		this.hostRevision = hostRevision;
+		this.memberApprovalStatuses = validatedStatuses;
+	}
+
+	public void clearHost()
+	{
+		if (memberApprovalStatuses != null)
+		{
+			memberApprovalStatuses.remove(hostMemberId);
+		}
+		hostMemberId = 0L;
+	}
+
+	public long getHostMemberId()
+	{
+		return hostMemberId;
+	}
+
+	public long getMinimumSharedLootValue()
+	{
+		return getHostSettings().getMinimumSharedLootValue();
+	}
+
+	public LootshareSettings getHostSettings()
+	{
+		return hostSettings == null
+			? LootshareSettings.defaults(minimumSharedLootValue)
+			: hostSettings.validatedCopy();
+	}
+
+	public long getHostRevision()
+	{
+		return hostRevision;
+	}
+
+	public MemberApprovalStatus getMemberApprovalStatus(long memberId)
+	{
+		if (memberId <= 0L)
+		{
+			throw new IllegalArgumentException("Member ID must be positive");
+		}
+		if (memberId == hostMemberId && hostMemberId > 0L)
+		{
+			return MemberApprovalStatus.APPROVED;
+		}
+		MemberApprovalStatus status = memberApprovalStatuses == null ? null : memberApprovalStatuses.get(memberId);
+		return status == null ? MemberApprovalStatus.PENDING : status;
+	}
+
+	public Map<Long, MemberApprovalStatus> getMemberApprovalStatuses()
+	{
+		Map<Long, MemberApprovalStatus> statuses = new LinkedHashMap<>();
+		if (memberApprovalStatuses != null)
+		{
+			statuses.putAll(memberApprovalStatuses);
+		}
+		if (hostMemberId > 0L)
+		{
+			statuses.put(hostMemberId, MemberApprovalStatus.APPROVED);
+		}
+		return Collections.unmodifiableMap(statuses);
 	}
 
 	public List<LootProposal> getAcceptedProposals()

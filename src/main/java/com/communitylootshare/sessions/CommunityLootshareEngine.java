@@ -10,6 +10,8 @@ import com.communitylootshare.domain.LootProposal;
 import com.communitylootshare.domain.LootProposalStatus;
 import com.communitylootshare.domain.LootshareParticipant;
 import com.communitylootshare.domain.LootshareSession;
+import com.communitylootshare.domain.LootshareSettings;
+import com.communitylootshare.domain.MemberApprovalStatus;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -176,6 +178,156 @@ public class CommunityLootshareEngine
 		return MutationResult.APPLIED;
 	}
 
+	public synchronized MutationResult updateHostState(long actingMemberId, long nextHostMemberId,
+	                                                   long minimumSharedLootValue, long revision)
+	{
+		final LootshareSettings settings;
+		try
+		{
+			settings = LootshareSettings.defaults(minimumSharedLootValue);
+		}
+		catch (RuntimeException ignored)
+		{
+			return MutationResult.INVALID;
+		}
+		return updateHostState(actingMemberId, nextHostMemberId, settings, revision);
+	}
+
+	public synchronized MutationResult updateHostState(long actingMemberId, long nextHostMemberId,
+	                                                   LootshareSettings settings, long revision)
+	{
+		LootshareSession active = activeSession();
+		Map<Long, MemberApprovalStatus> approvalStatuses = active == null
+			? Collections.emptyMap()
+			: active.getMemberApprovalStatuses();
+		return updateHostState(actingMemberId, nextHostMemberId, settings, revision, approvalStatuses);
+	}
+
+	public synchronized MutationResult updateHostState(long actingMemberId, long nextHostMemberId,
+	                                                   LootshareSettings settings, long revision,
+	                                                   Map<Long, MemberApprovalStatus> approvalStatuses)
+	{
+		LootshareSession active = activeSession();
+		if (active == null)
+		{
+			return MutationResult.NO_ACTIVE_SESSION;
+		}
+		if (actingMemberId <= 0L || nextHostMemberId <= 0L || settings == null || revision <= 0L
+			|| approvalStatuses == null)
+		{
+			return MutationResult.INVALID;
+		}
+		final LootshareSettings validatedSettings;
+		final Map<Long, MemberApprovalStatus> validatedApprovalStatuses;
+		try
+		{
+			validatedSettings = settings.validatedCopy();
+			LootshareSession validationSession = new LootshareSession("approval-validation", active.getPartyId(),
+				active.getStartedAt());
+			validationSession.setHostState(nextHostMemberId, validatedSettings, revision, approvalStatuses);
+			validatedApprovalStatuses = validationSession.getMemberApprovalStatuses();
+		}
+		catch (RuntimeException ignored)
+		{
+			return MutationResult.INVALID;
+		}
+
+		long currentHostMemberId = active.getHostMemberId();
+		if ((currentHostMemberId == 0L && actingMemberId != nextHostMemberId)
+			|| (currentHostMemberId != 0L && actingMemberId != currentHostMemberId))
+		{
+			return MutationResult.NOT_HOST;
+		}
+		if (revision == active.getHostRevision())
+		{
+			boolean sameApprovalPolicy = active.getMemberApprovalStatuses().equals(validatedApprovalStatuses);
+			if (currentHostMemberId == 0L)
+			{
+				Map<Long, MemberApprovalStatus> activeWithoutClaimant =
+					new LinkedHashMap<>(active.getMemberApprovalStatuses());
+				Map<Long, MemberApprovalStatus> incomingWithoutClaimant =
+					new LinkedHashMap<>(validatedApprovalStatuses);
+				activeWithoutClaimant.remove(nextHostMemberId);
+				incomingWithoutClaimant.remove(nextHostMemberId);
+				sameApprovalPolicy = activeWithoutClaimant.equals(incomingWithoutClaimant);
+			}
+			if (currentHostMemberId == 0L && actingMemberId == nextHostMemberId
+				&& active.getHostSettings().equals(validatedSettings)
+				&& sameApprovalPolicy)
+			{
+				active.setHostState(nextHostMemberId, validatedSettings, revision, validatedApprovalStatuses);
+				return MutationResult.APPLIED;
+			}
+			return currentHostMemberId == nextHostMemberId
+				&& active.getHostSettings().equals(validatedSettings)
+				&& sameApprovalPolicy
+				? MutationResult.DUPLICATE
+				: MutationResult.CONFLICT;
+		}
+		if (revision < active.getHostRevision())
+		{
+			return MutationResult.CONFLICT;
+		}
+
+		active.setHostState(nextHostMemberId, validatedSettings, revision, validatedApprovalStatuses);
+		return MutationResult.APPLIED;
+	}
+
+	public synchronized MutationResult updateMemberApprovalStatus(long actingMemberId, long targetMemberId,
+	                                                              MemberApprovalStatus status, long revision)
+	{
+		LootshareSession active = activeSession();
+		if (active == null)
+		{
+			return MutationResult.NO_ACTIVE_SESSION;
+		}
+		if (actingMemberId <= 0L || targetMemberId <= 0L || status == null || revision <= 0L)
+		{
+			return MutationResult.INVALID;
+		}
+		if (active.getHostMemberId() != actingMemberId)
+		{
+			return MutationResult.NOT_HOST;
+		}
+		if (targetMemberId == active.getHostMemberId() && status != MemberApprovalStatus.APPROVED)
+		{
+			return MutationResult.INVALID;
+		}
+		Map<Long, MemberApprovalStatus> statuses = new LinkedHashMap<>(active.getMemberApprovalStatuses());
+		if (status == MemberApprovalStatus.PENDING)
+		{
+			statuses.remove(targetMemberId);
+		}
+		else
+		{
+			statuses.put(targetMemberId, status);
+		}
+		return updateHostState(actingMemberId, active.getHostMemberId(), active.getHostSettings(), revision, statuses);
+	}
+
+	public synchronized MutationResult vacateHost(long departingMemberId)
+	{
+		LootshareSession active = activeSession();
+		if (active == null)
+		{
+			return MutationResult.NO_ACTIVE_SESSION;
+		}
+		if (departingMemberId <= 0L)
+		{
+			return MutationResult.INVALID;
+		}
+		if (active.getHostMemberId() == 0L)
+		{
+			return MutationResult.DUPLICATE;
+		}
+		if (active.getHostMemberId() != departingMemberId)
+		{
+			return MutationResult.NOT_HOST;
+		}
+		active.clearHost();
+		return MutationResult.APPLIED;
+	}
+
 	public synchronized MutationResult addProposal(LootProposal proposal)
 	{
 		if (proposal == null)
@@ -223,13 +375,18 @@ public class CommunityLootshareEngine
 		{
 			return new DecisionOutcome(MutationResult.NOT_FOUND, null);
 		}
-		if (decidingMemberId != existing.getOwnerMemberId())
-		{
-			return new DecisionOutcome(MutationResult.NOT_OWNER, existing);
-		}
 		if (decision == null || decision == LootProposalStatus.PENDING)
 		{
 			return new DecisionOutcome(MutationResult.INVALID, existing);
+		}
+		LootshareSession active = activeSession();
+		if (active == null || active.getPartyId() != existing.getPartyId())
+		{
+			return new DecisionOutcome(MutationResult.NO_ACTIVE_SESSION, existing);
+		}
+		if (decidingMemberId != active.getHostMemberId())
+		{
+			return new DecisionOutcome(MutationResult.NOT_HOST, existing);
 		}
 		if (existing.getStatus() != LootProposalStatus.PENDING)
 		{
@@ -237,12 +394,6 @@ public class CommunityLootshareEngine
 				? MutationResult.DUPLICATE
 				: MutationResult.CONFLICT;
 			return new DecisionOutcome(result, existing);
-		}
-
-		LootshareSession active = activeSession();
-		if (active == null || active.getPartyId() != existing.getPartyId())
-		{
-			return new DecisionOutcome(MutationResult.NO_ACTIVE_SESSION, existing);
 		}
 
 		try
@@ -305,6 +456,19 @@ public class CommunityLootshareEngine
 		return matching;
 	}
 
+	public synchronized List<LootProposal> getPendingProposalsForActiveParty()
+	{
+		List<LootProposal> pending = new ArrayList<>();
+		for (LootProposal proposal : getProposalsForActiveParty())
+		{
+			if (proposal.getStatus() == LootProposalStatus.PENDING)
+			{
+				pending.add(proposal);
+			}
+		}
+		return pending;
+	}
+
 	public synchronized Optional<LootshareSession> getActiveSession()
 	{
 		LootshareSession active = activeSession();
@@ -325,6 +489,46 @@ public class CommunityLootshareEngine
 	{
 		LootshareSession active = activeSession();
 		return active == null ? 0L : active.getPartyId();
+	}
+
+	public synchronized long getActiveHostMemberId()
+	{
+		LootshareSession active = activeSession();
+		return active == null ? 0L : active.getHostMemberId();
+	}
+
+	public synchronized long getActiveMinimumSharedLootValue()
+	{
+		LootshareSession active = activeSession();
+		return active == null ? 0L : active.getMinimumSharedLootValue();
+	}
+
+	public synchronized Optional<LootshareSettings> getActiveHostSettings()
+	{
+		LootshareSession active = activeSession();
+		return active == null || active.getHostMemberId() <= 0L || active.getHostRevision() <= 0L
+			? Optional.empty()
+			: Optional.of(active.getHostSettings());
+	}
+
+	public synchronized long getActiveHostRevision()
+	{
+		LootshareSession active = activeSession();
+		return active == null ? 0L : active.getHostRevision();
+	}
+
+	public synchronized MemberApprovalStatus getActiveMemberApprovalStatus(long memberId)
+	{
+		LootshareSession active = activeSession();
+		return active == null || memberId <= 0L
+			? MemberApprovalStatus.PENDING
+			: active.getMemberApprovalStatus(memberId);
+	}
+
+	public synchronized Map<Long, MemberApprovalStatus> getActiveMemberApprovalStatuses()
+	{
+		LootshareSession active = activeSession();
+		return active == null ? Collections.emptyMap() : active.getMemberApprovalStatuses();
 	}
 
 	private boolean removeOldestCompletedSession()
@@ -381,7 +585,7 @@ public class CommunityLootshareEngine
 		DUPLICATE,
 		CONFLICT,
 		NOT_FOUND,
-		NOT_OWNER,
+		NOT_HOST,
 		NO_ACTIVE_SESSION,
 		INVALID,
 		LIMIT_REACHED

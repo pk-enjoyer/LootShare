@@ -170,7 +170,7 @@ New high-end PvM boss plugins are not accepted as a blanket policy.
 
 ## Project Overview
 
-This is a RuneLite external plugin backend named **Community Lootshare**. The active `com.communitylootshare` code captures RuneLite loot events, exchanges owner-authorized proposals over RuneLite Party, persists profile-scoped sessions, and computes exact splits and settlement transfers. A Community Lootshare view layer is still planned, so owners cannot yet approve or reject proposals through the RuneLite interface.
+This is a RuneLite external plugin named **Community Lootshare**. The active `com.communitylootshare` code captures RuneLite loot events, exchanges host-authorized decisions over RuneLite Party, persists profile-scoped sessions, computes exact splits and settlement transfers, and exposes Party, member-loot, eligibility, and settlement UI.
 
 The active plugin entry point is `com.communitylootshare.CommunityLootsharePlugin`, declared in `runelite-plugin.properties` and loaded by the development launcher.
 
@@ -218,18 +218,21 @@ If Auto Split Manager code is deliberately migrated, work toward these over time
 
 ## Active Community Lootshare Architecture
 
-- `CommunityLootsharePlugin` registers the custom Party protocol, delegates RuneLite events to `CommunityLootshareController`, and unregisters its messages on shutdown.
-- `CommunityLootshareConfig` establishes the stable `community-lootshare` config group and the current fixed 100,000-coin capture threshold, but exposes no user-facing settings yet.
-- `LootCaptureService` converts `LootReceived` stacks into canonical, immutable price snapshots and suppresses identical captures from the same game tick.
+- `CommunityLootsharePlugin` keeps RuneLite's `LootManager` active, captures its direct `ServerNpcLoot` events, registers the custom Party protocol, delegates RuneLite events to `CommunityLootshareController`, and unregisters its messages on shutdown.
+- `CommunityLootshareConfig` establishes the stable `community-lootshare` config group and stores hosted-party preferences for loot sources, GE/high-alchemy valuation, the minimum split value, and logged-out roster inclusion. Every enabled drop is captured and shared regardless of value; the minimum filters only split calculations. A guest's local preferences are not effective or overwritten while another member hosts.
+- `LootCaptureService` converts RuneLite item-stack collections into canonical, immutable price snapshots using the synchronized host valuation basis and suppresses identical captures from the same game tick. Direct `ServerNpcLoot` and higher-level `LootReceived` delivery can therefore coexist without duplicate proposals.
 - `SharedLootItem` stores item/pricing IDs, quantity, and a captured unit price, validating IDs, quantity, price, and multiplication overflow.
 - `SharedLootEvent` stores bounded proposal metadata, a capture timestamp, and up to 128 item records, and computes an overflow-checked total.
 - `LootProposal` enforces pending/final state, authoritative owner identity, owner inclusion in accepted rosters, and decision chronology.
-- `CommunityLootshareEngine` owns bounded proposal and Party-session state, owner-only decisions, duplicate/conflict handling, snapshot/restore, and history.
-- `CommunityLootshareProposalMessage` and `CommunityLootshareDecisionMessage` define the bounded version-1 RuneLite Party protocol. The receiving `PartyMemberMessage.memberId` is authoritative; sender IDs are not serialized in the plugin payload.
-- `CommunityLootshareController` coordinates asynchronous profile loading/saving, Party lifecycle and late-join sync, local capture, remote validation, future UI decisions, and calculation/history queries.
+- `CommunityLootshareEngine` owns bounded proposal and Party-session state, revisioned host/member eligibility, host-only decisions, duplicate/conflict handling, snapshot/restore, and history.
+- `CommunityLootshareProposalMessage` defines the bounded version-1 capture payload, `CommunityLootshareDecisionMessage` defines version-2 host decisions, and `CommunityLootshareHostMessage` defines the version-3 host-policy and member-eligibility snapshot. The receiving `PartyMemberMessage.memberId` is authoritative; sender IDs are not serialized in plugin payloads.
+- `CommunityLootshareController` coordinates asynchronous profile loading/saving, Party lifecycle and late-join sync, local capture, remote validation, automatic host decisions, eligibility changes, and calculation/history queries.
+- The first RuneLite Party member becomes Community Lootshare host. Host authority and the complete capture/split policy are revisioned Party state; the host can transfer authority from the member-card right-click menu. Guests pause capture until the host snapshot is available and never fall back to their own preferences.
 - `CommunityLootshareStorage` writes schema-versioned profile files beneath `RuneLite.RUNELITE_DIR/community-lootshare` through an atomic temporary-file replacement. Malformed, oversized, or future-schema files become read-only instead of being overwritten.
 - `LootshareCalculator` freezes entitlement per accepted proposal roster, assigns indivisible-coin remainders deterministically by Party member ID, and emits zero-sum balances plus direct settlement transfers.
-- No Community Lootshare sidebar, overlay, notification, approval control, or user-facing setting is implemented yet. Do not present the backend as a user-complete workflow.
+- `ui/lootshare/CommunityLootsharePanel` and `CommunityLootshareUiController` provide create/join/rejoin/leave Party controls, a collapsible effective-host-settings section, host-managed member eligibility, collapsible per-member loot summaries, a settlement section, and a reusable settlement graph popout. Rejoin uses RuneLite Party's existing hidden `previousPartyId` setting.
+- `CommunityLootshareDebugSession` and the sidebar's developer simulation controls provide isolated in-memory fake members plus coin and Tombs of Amascut loot presets only when RuneLite developer mode is active. Coin value is user-provided; item presets capture `ItemManager` prices resolved in the controller's client-thread snapshot. Debug state never mutates `PartyService`, sends Party messages, or persists.
+- No Community Lootshare overlay, notification, or history view is implemented yet. Do not present the sidebar as a user-complete workflow.
 
 ## Retained Auto Split Manager Architecture (Legacy)
 

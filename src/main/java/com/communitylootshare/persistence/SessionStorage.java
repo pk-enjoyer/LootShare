@@ -5,11 +5,11 @@
 
 package com.communitylootshare.persistence;
 
-import com.google.gson.Gson;
-import com.google.gson.JsonSyntaxException;
 import com.communitylootshare.PluginConfig;
 import com.communitylootshare.models.Session;
 import com.communitylootshare.utils.InstantTypeAdapter;
+import com.google.gson.Gson;
+import com.google.gson.JsonSyntaxException;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.FileReader;
@@ -453,18 +453,6 @@ public class SessionStorage
 		return archiveFiles != null && archiveFiles.length > 0;
 	}
 
-	private static final class ArchiveSplit
-	{
-		private final SessionStorageData primaryData;
-		private final List<Session> archiveSessions;
-
-		private ArchiveSplit(SessionStorageData primaryData, List<Session> archiveSessions)
-		{
-			this.primaryData = primaryData;
-			this.archiveSessions = archiveSessions;
-		}
-	}
-
 	public void clearLegacySessionConfig(PluginConfig config)
 	{
 		if (configManager != null)
@@ -566,6 +554,18 @@ public class SessionStorage
 		{
 			log.warn("Failed to save sessions to legacy config", e);
 			return false;
+		}
+	}
+
+	private static final class ArchiveSplit
+	{
+		private final SessionStorageData primaryData;
+		private final List<Session> archiveSessions;
+
+		private ArchiveSplit(SessionStorageData primaryData, List<Session> archiveSessions)
+		{
+			this.primaryData = primaryData;
+			this.archiveSessions = archiveSessions;
 		}
 	}
 }

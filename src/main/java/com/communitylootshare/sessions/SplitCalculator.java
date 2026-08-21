@@ -5,9 +5,9 @@
 
 package com.communitylootshare.sessions;
 
-import com.communitylootshare.models.SplitEvent;
 import com.communitylootshare.models.PlayerMetrics;
 import com.communitylootshare.models.Session;
+import com.communitylootshare.models.SplitEvent;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
@@ -23,6 +23,42 @@ import lombok.Getter;
  */
 public class SplitCalculator
 {
+	public static long computeSplitAmount(long lootAmount, GeTaxSettings geTaxSettings)
+	{
+		GeTaxSettings safeSettings = geTaxSettings == null ? GeTaxSettings.disabled() : geTaxSettings;
+		if (!safeSettings.enabled || lootAmount < safeSettings.minimumValue)
+		{
+			return lootAmount;
+		}
+
+		long geTax = computeGeTax(lootAmount, safeSettings);
+		if (geTax <= 0L)
+		{
+			return lootAmount;
+		}
+
+		return Math.max(lootAmount - geTax, 0L);
+	}
+
+	public static long computeGeTax(long lootAmount, GeTaxSettings geTaxSettings)
+	{
+		GeTaxSettings safeSettings = geTaxSettings == null ? GeTaxSettings.disabled() : geTaxSettings;
+		if (!safeSettings.enabled
+			|| lootAmount < safeSettings.minimumValue
+			|| Double.isNaN(safeSettings.percent)
+			|| Double.isInfinite(safeSettings.percent)
+			|| safeSettings.percent <= 0.0d)
+		{
+			return 0L;
+		}
+
+		BigDecimal calculated = BigDecimal.valueOf(lootAmount)
+			.multiply(BigDecimal.valueOf(safeSettings.percent))
+			.divide(BigDecimal.valueOf(100L), 0, RoundingMode.DOWN);
+		long capped = Math.min(safeSettings.maxTaxPerLoot, calculated.longValue());
+		return Math.max(capped, 0L);
+	}
+
 	public List<PlayerMetrics> compute(Session selectedSession,
 	                                   List<Session> thread,
 	                                   Set<String> knownPlayers,
@@ -140,23 +176,6 @@ public class SplitCalculator
 		}
 	}
 
-	public static long computeSplitAmount(long lootAmount, GeTaxSettings geTaxSettings)
-	{
-		GeTaxSettings safeSettings = geTaxSettings == null ? GeTaxSettings.disabled() : geTaxSettings;
-		if (!safeSettings.enabled || lootAmount < safeSettings.minimumValue)
-		{
-			return lootAmount;
-		}
-
-		long geTax = computeGeTax(lootAmount, safeSettings);
-		if (geTax <= 0L)
-		{
-			return lootAmount;
-		}
-
-		return Math.max(lootAmount - geTax, 0L);
-	}
-
 	private String findRosterPlayer(List<String> roster, String player)
 	{
 		if (player == null)
@@ -171,25 +190,6 @@ public class SplitCalculator
 			}
 		}
 		return null;
-	}
-
-	public static long computeGeTax(long lootAmount, GeTaxSettings geTaxSettings)
-	{
-		GeTaxSettings safeSettings = geTaxSettings == null ? GeTaxSettings.disabled() : geTaxSettings;
-		if (!safeSettings.enabled
-			|| lootAmount < safeSettings.minimumValue
-			|| Double.isNaN(safeSettings.percent)
-			|| Double.isInfinite(safeSettings.percent)
-			|| safeSettings.percent <= 0.0d)
-		{
-			return 0L;
-		}
-
-		BigDecimal calculated = BigDecimal.valueOf(lootAmount)
-			.multiply(BigDecimal.valueOf(safeSettings.percent))
-			.divide(BigDecimal.valueOf(100L), 0, RoundingMode.DOWN);
-		long capped = Math.min(safeSettings.maxTaxPerLoot, calculated.longValue());
-		return Math.max(capped, 0L);
 	}
 
 	private long sum(Map<String, Long> values)

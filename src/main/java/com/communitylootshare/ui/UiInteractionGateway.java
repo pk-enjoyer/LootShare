@@ -16,6 +16,8 @@ public interface UiInteractionGateway
 
 	boolean confirm(Component parent, String title, String message);
 
+	String prompt(Component parent, String title, String message);
+
 	HistoryExportChoice chooseHistoryExport(Component parent);
 
 	void writeClipboardText(String text);

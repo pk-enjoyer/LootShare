@@ -10,7 +10,7 @@ import java.util.List;
 
 public class CommunityLootshareState
 {
-	public static final int CURRENT_SCHEMA_VERSION = 1;
+	public static final int CURRENT_SCHEMA_VERSION = 4;
 
 	private int schemaVersion = CURRENT_SCHEMA_VERSION;
 	private String activeSessionId;

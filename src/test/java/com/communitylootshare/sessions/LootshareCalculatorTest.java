@@ -37,6 +37,11 @@ public class LootshareCalculatorTest
 
 		LootshareCalculation result = new LootshareCalculator().calculate(session);
 		assertEquals(160L, result.getTotalAcceptedValue());
+		assertEquals(2, result.getIncludedLoot().size());
+		assertEquals("p1", result.getIncludedLoot().get(0).getProposalId());
+		assertEquals(100L, result.getIncludedLoot().get(0).getValue());
+		assertEquals(Instant.ofEpochSecond(1), result.getIncludedLoot().get(0).getCapturedAt());
+		assertEquals("p2", result.getIncludedLoot().get(1).getProposalId());
 		assertEquals(3, result.getBalances().size());
 		assertBalance(result, 1L, "Alice", 100L, 34L, -66L);
 		assertBalance(result, 2L, "Bobby", 0L, 63L, 63L);
@@ -65,6 +70,26 @@ public class LootshareCalculatorTest
 	}
 
 	@Test
+	public void excludesAcceptedDropsBelowTheHostThresholdWithoutRemovingThemFromTheSession()
+	{
+		LootshareSession session = new LootshareSession("threshold", 10L, Instant.EPOCH);
+		session.setHostState(1L, 100L, 1L);
+		session.addAcceptedProposal(accepted("below", 1L, 99L, Instant.ofEpochSecond(1),
+			new LootshareParticipant(1L, "Alice"), new LootshareParticipant(2L, "Bob")));
+		session.addAcceptedProposal(accepted("at", 1L, 100L, Instant.ofEpochSecond(2),
+			new LootshareParticipant(1L, "Alice"), new LootshareParticipant(2L, "Bob")));
+
+		LootshareCalculation calculation = new LootshareCalculator().calculate(session);
+
+		assertEquals(2, session.getAcceptedProposals().size());
+		assertEquals(100L, calculation.getTotalAcceptedValue());
+		assertEquals(1, calculation.getIncludedLoot().size());
+		assertEquals("at", calculation.getIncludedLoot().get(0).getProposalId());
+		assertBalance(calculation, 1L, "Alice", 100L, 50L, -50L);
+		assertBalance(calculation, 2L, "Bob", 0L, 50L, 50L);
+	}
+
+	@Test
 	public void calculationValuesValidateAndExposeFields()
 	{
 		LootshareCalculation.Balance balance = new LootshareCalculation.Balance(1L, "Alice", 20L, 30L);
@@ -79,6 +104,9 @@ public class LootshareCalculatorTest
 		expectIllegal(() -> new LootshareCalculation(-1L, Collections.emptyList(), Collections.emptyList()));
 		expectIllegal(() -> new LootshareCalculation(0L, null, Collections.emptyList()));
 		expectIllegal(() -> new LootshareCalculation(0L, Collections.emptyList(), null));
+		expectIllegal(() -> new LootshareCalculation(0L, Collections.emptyList(), Collections.emptyList(), null));
+		expectIllegal(() -> new LootshareCalculation(0L, Collections.emptyList(), Collections.emptyList(),
+			Collections.singletonList(null)));
 		expectIllegal(() -> new LootshareCalculation.Balance(1L, "Alice", -1L, 0L));
 		expectIllegal(() -> new LootshareCalculation.Transfer(1L, "Alice", 1L, "Alice", 1L));
 		expectIllegal(() -> new LootshareCalculation.Transfer(1L, "Alice", 2L, "Bob", 0L));
@@ -94,6 +122,15 @@ public class LootshareCalculatorTest
 		{
 			result.getBalances().clear();
 			fail("Expected immutable balances");
+		}
+		catch (UnsupportedOperationException expected)
+		{
+			// Expected.
+		}
+		try
+		{
+			result.getIncludedLoot().clear();
+			fail("Expected immutable included-loot history");
 		}
 		catch (UnsupportedOperationException expected)
 		{

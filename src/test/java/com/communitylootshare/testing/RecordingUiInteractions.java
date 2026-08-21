@@ -18,6 +18,7 @@ public class RecordingUiInteractions implements UiInteractionGateway
 	private boolean confirmResult = true;
 	private HistoryExportChoice exportChoice = HistoryExportChoice.CANCEL;
 	private String clipboardText;
+	private String promptResult;
 
 	@Override
 	public void showMessage(Component parent, String message)
@@ -29,6 +30,12 @@ public class RecordingUiInteractions implements UiInteractionGateway
 	public boolean confirm(Component parent, String title, String message)
 	{
 		return confirmResult;
+	}
+
+	@Override
+	public String prompt(Component parent, String title, String message)
+	{
+		return promptResult;
 	}
 
 	@Override
@@ -62,6 +69,11 @@ public class RecordingUiInteractions implements UiInteractionGateway
 	public void setClipboardText(String clipboardText)
 	{
 		this.clipboardText = clipboardText;
+	}
+
+	public void setPromptResult(String promptResult)
+	{
+		this.promptResult = promptResult;
 	}
 
 	public String getClipboardText()

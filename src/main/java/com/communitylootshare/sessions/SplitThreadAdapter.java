@@ -9,7 +9,6 @@ import com.communitylootshare.models.Session;
 import com.communitylootshare.models.SplitEvent;
 import com.communitylootshare.models.SplitSegment;
 import com.communitylootshare.models.SplitThread;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;

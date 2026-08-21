@@ -28,6 +28,7 @@ public class LootshareCalculator
 		}
 
 		Map<Long, Accumulator> byMember = new LinkedHashMap<>();
+		List<LootshareCalculation.IncludedLoot> includedLoot = new ArrayList<>();
 		long totalAcceptedValue = 0L;
 		for (LootProposal proposal : session.getAcceptedProposals())
 		{
@@ -36,7 +37,14 @@ public class LootshareCalculator
 				continue;
 			}
 			long eventValue = proposal.getEvent().getTotal();
+			if (eventValue < session.getMinimumSharedLootValue())
+			{
+				continue;
+			}
 			totalAcceptedValue = Math.addExact(totalAcceptedValue, eventValue);
+			includedLoot.add(new LootshareCalculation.IncludedLoot(proposal.getProposalId(),
+				proposal.getOwnerMemberId(), proposal.getEvent().getRecipient(), eventValue,
+				proposal.getEvent().getCapturedAt(), proposal.getDecidedAt()));
 
 			List<LootshareParticipant> participants = proposal.getParticipants();
 			long baseShare = eventValue / participants.size();
@@ -77,7 +85,9 @@ public class LootshareCalculator
 			throw new IllegalStateException("Lootshare balances are not zero-sum");
 		}
 
-		return new LootshareCalculation(totalAcceptedValue, balances, buildTransfers(balances));
+		includedLoot.sort(Comparator.comparing(LootshareCalculation.IncludedLoot::getCapturedAt)
+			.thenComparing(LootshareCalculation.IncludedLoot::getProposalId));
+		return new LootshareCalculation(totalAcceptedValue, balances, buildTransfers(balances), includedLoot);
 	}
 
 	private List<LootshareCalculation.Transfer> buildTransfers(List<LootshareCalculation.Balance> balances)

@@ -5,10 +5,10 @@
 
 package com.communitylootshare.persistence;
 
-import com.google.gson.Gson;
-import com.google.gson.JsonParseException;
 import com.communitylootshare.domain.CommunityLootshareState;
 import com.communitylootshare.utils.InstantTypeAdapter;
+import com.google.gson.Gson;
+import com.google.gson.JsonParseException;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.FileReader;
@@ -64,6 +64,20 @@ public class CommunityLootshareStorage
 		return gson.newBuilder()
 			.registerTypeAdapter(Instant.class, new InstantTypeAdapter())
 			.create();
+	}
+
+	private static String sanitizeFilePart(String value)
+	{
+		if (value == null || value.trim().isEmpty())
+		{
+			return "profile";
+		}
+		String sanitized = value.trim().replaceAll("[\\\\/:*?\"<>|\\p{Cntrl}]+", "_");
+		while (sanitized.contains(".."))
+		{
+			sanitized = sanitized.replace("..", "_");
+		}
+		return sanitized.isEmpty() ? "profile" : sanitized;
 	}
 
 	@Nullable
@@ -184,20 +198,6 @@ public class CommunityLootshareStorage
 				}
 			}
 		}
-	}
-
-	private static String sanitizeFilePart(String value)
-	{
-		if (value == null || value.trim().isEmpty())
-		{
-			return "profile";
-		}
-		String sanitized = value.trim().replaceAll("[\\\\/:*?\"<>|\\p{Cntrl}]+", "_");
-		while (sanitized.contains(".."))
-		{
-			sanitized = sanitized.replace("..", "_");
-		}
-		return sanitized.isEmpty() ? "profile" : sanitized;
 	}
 
 	public static final class LoadResult

@@ -5,6 +5,7 @@
 
 package com.communitylootshare.capture;
 
+import com.communitylootshare.domain.LootValueBasis;
 import com.communitylootshare.domain.SharedLootEvent;
 import com.communitylootshare.domain.SharedLootItem;
 import java.time.Instant;
@@ -20,10 +21,11 @@ import java.util.UUID;
 import java.util.function.Supplier;
 import javax.inject.Inject;
 import javax.inject.Singleton;
+import net.runelite.api.ItemComposition;
+import net.runelite.api.gameval.ItemID;
 import net.runelite.client.game.ItemManager;
 import net.runelite.client.game.ItemStack;
 import net.runelite.client.game.ItemVariationMapping;
-import net.runelite.client.plugins.loottracker.LootReceived;
 
 @Singleton
 public class LootCaptureService
@@ -45,17 +47,41 @@ public class LootCaptureService
 		this.proposalIdSupplier = Objects.requireNonNull(proposalIdSupplier, "proposalIdSupplier");
 	}
 
-	public synchronized Optional<SharedLootEvent> capture(LootReceived received, String recipient,
-	                                                     Instant capturedAt, long captureTick,
-	                                                     long minimumBundleValue)
+	private static String normalizeSourceLabel(String sourceLabel)
 	{
-		if (received == null || recipient == null || recipient.trim().isEmpty() || capturedAt == null
-			|| minimumBundleValue < 0L)
+		if (sourceLabel == null)
+		{
+			return null;
+		}
+		String label = sourceLabel.trim();
+		if (label.isEmpty())
+		{
+			return null;
+		}
+		return label.length() <= SharedLootEvent.MAX_SOURCE_LABEL_LENGTH
+			? label
+			: label.substring(0, SharedLootEvent.MAX_SOURCE_LABEL_LENGTH);
+	}
+
+	public synchronized Optional<SharedLootEvent> capture(String sourceLabel, Collection<ItemStack> stacks,
+	                                                      String recipient, Instant capturedAt,
+	                                                      long captureTick)
+	{
+		return capture(sourceLabel, stacks, recipient, capturedAt, captureTick,
+			LootValueBasis.GRAND_EXCHANGE);
+	}
+
+	public synchronized Optional<SharedLootEvent> capture(String sourceLabel, Collection<ItemStack> stacks,
+	                                                      String recipient, Instant capturedAt,
+	                                                      long captureTick, LootValueBasis lootValueBasis)
+	{
+		String normalizedSourceLabel = normalizeSourceLabel(sourceLabel);
+		if (normalizedSourceLabel == null || recipient == null || recipient.trim().isEmpty()
+			|| capturedAt == null || lootValueBasis == null)
 		{
 			return Optional.empty();
 		}
 
-		Collection<ItemStack> stacks = received.getItems();
 		if (stacks == null || stacks.isEmpty())
 		{
 			return Optional.empty();
@@ -70,12 +96,13 @@ public class LootCaptureService
 				{
 					continue;
 				}
-				int pricingId = ItemVariationMapping.map(itemManager.canonicalize(stack.getId()));
+				int canonicalId = itemManager.canonicalize(stack.getId());
+				int pricingId = ItemVariationMapping.map(canonicalId);
 				if (pricingId < 0)
 				{
 					continue;
 				}
-				long unitPrice = Math.max(0, itemManager.getItemPrice(pricingId));
+				long unitPrice = resolveUnitPrice(canonicalId, pricingId, lootValueBasis);
 				ItemKey key = new ItemKey(stack.getId(), pricingId, unitPrice);
 				quantities.put(key, Math.addExact(quantities.getOrDefault(key, 0L), stack.getQuantity()));
 			}
@@ -101,22 +128,17 @@ public class LootCaptureService
 			items.add(new SharedLootItem(key.itemId, key.pricingId, entry.getValue(), key.unitPrice));
 		}
 
-		String sourceLabel = sourceLabel(received);
 		final SharedLootEvent event;
 		try
 		{
 			Instant wirePrecisionCaptureTime = Instant.ofEpochMilli(capturedAt.toEpochMilli());
-			event = new SharedLootEvent(proposalIdSupplier.get(), recipient, sourceLabel, wirePrecisionCaptureTime, items);
+			event = new SharedLootEvent(proposalIdSupplier.get(), recipient, normalizedSourceLabel,
+				wirePrecisionCaptureTime, items);
 		}
 		catch (IllegalArgumentException | ArithmeticException ignored)
 		{
 			return Optional.empty();
 		}
-		if (event.getTotal() < minimumBundleValue)
-		{
-			return Optional.empty();
-		}
-
 		CaptureFingerprint fingerprint = new CaptureFingerprint(event.getRecipient(), event.getSourceLabel(), event.getItems());
 		if (captureTick == lastCaptureTick && fingerprint.equals(lastFingerprint))
 		{
@@ -133,17 +155,22 @@ public class LootCaptureService
 		lastFingerprint = null;
 	}
 
-	private static String sourceLabel(LootReceived received)
+	private long resolveUnitPrice(int canonicalId, int pricingId, LootValueBasis lootValueBasis)
 	{
-		String label = received.getName();
-		if (label == null || label.trim().isEmpty())
+		if (lootValueBasis == LootValueBasis.GRAND_EXCHANGE)
 		{
-			label = received.getType() == null ? "Loot" : received.getType().name().replace('_', ' ');
+			return Math.max(0, itemManager.getItemPrice(pricingId));
 		}
-		label = label.trim();
-		return label.length() <= SharedLootEvent.MAX_SOURCE_LABEL_LENGTH
-			? label
-			: label.substring(0, SharedLootEvent.MAX_SOURCE_LABEL_LENGTH);
+		if (canonicalId == ItemID.COINS)
+		{
+			return 1L;
+		}
+		if (canonicalId == ItemID.PLATINUM)
+		{
+			return 1_000L;
+		}
+		ItemComposition composition = itemManager.getItemComposition(canonicalId);
+		return composition == null ? 0L : Math.max(0, composition.getHaPrice());
 	}
 
 	private static final class ItemKey
@@ -160,6 +187,12 @@ public class LootCaptureService
 		}
 
 		@Override
+		public int hashCode()
+		{
+			return Objects.hash(itemId, pricingId, unitPrice);
+		}
+
+		@Override
 		public boolean equals(Object other)
 		{
 			if (this == other)
@@ -172,12 +205,6 @@ public class LootCaptureService
 			}
 			ItemKey itemKey = (ItemKey) other;
 			return itemId == itemKey.itemId && pricingId == itemKey.pricingId && unitPrice == itemKey.unitPrice;
-		}
-
-		@Override
-		public int hashCode()
-		{
-			return Objects.hash(itemId, pricingId, unitPrice);
 		}
 	}
 
@@ -195,6 +222,12 @@ public class LootCaptureService
 		}
 
 		@Override
+		public int hashCode()
+		{
+			return Objects.hash(recipient, sourceLabel, items);
+		}
+
+		@Override
 		public boolean equals(Object other)
 		{
 			if (this == other)
@@ -207,12 +240,6 @@ public class LootCaptureService
 			}
 			CaptureFingerprint that = (CaptureFingerprint) other;
 			return recipient.equals(that.recipient) && sourceLabel.equals(that.sourceLabel) && items.equals(that.items);
-		}
-
-		@Override
-		public int hashCode()
-		{
-			return Objects.hash(recipient, sourceLabel, items);
 		}
 	}
 }

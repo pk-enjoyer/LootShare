@@ -9,11 +9,16 @@ import com.google.gson.Gson;
 import com.communitylootshare.domain.LootProposal;
 import com.communitylootshare.domain.LootProposalStatus;
 import com.communitylootshare.domain.LootshareParticipant;
+import com.communitylootshare.domain.LootshareSettings;
+import com.communitylootshare.domain.LootValueBasis;
+import com.communitylootshare.domain.MemberApprovalStatus;
 import com.communitylootshare.domain.SharedLootEvent;
 import com.communitylootshare.domain.SharedLootItem;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Optional;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -95,6 +100,83 @@ public class CommunityLootsharePartyMessageTest
 	}
 
 	@Test
+	public void hostMessageRoundTripsInitialSettingsAndTransfers()
+	{
+		LootshareSettings settings = new LootshareSettings(100_000L, LootValueBasis.HIGH_ALCHEMY,
+			true, false, true, false, true, true);
+		CommunityLootshareHostMessage initial = new CommunityLootshareHostMessage(7L, settings, 1L);
+		initial.setMemberId(7L);
+		assertEquals(CommunityLootshareHostMessage.PROTOCOL_VERSION, initial.getProtocolVersion());
+		assertEquals(7L, initial.getHostMemberId());
+		assertEquals(100_000L, initial.getMinimumSharedLootValue());
+		assertEquals("HIGH_ALCHEMY", initial.getLootValueBasis());
+		assertEquals(1L, initial.getRevision());
+		CommunityLootshareHostMessage.DecodedHostState initialState = initial.decode().get();
+		assertEquals(7L, initialState.getHostMemberId());
+		assertEquals(100_000L, initialState.getMinimumSharedLootValue());
+		assertEquals(settings, initialState.getSettings());
+		assertEquals(1L, initialState.getRevision());
+		assertEquals(MemberApprovalStatus.APPROVED, initialState.getApprovalStatuses().get(7L));
+
+		Map<Long, MemberApprovalStatus> approvals = new LinkedHashMap<>();
+		approvals.put(7L, MemberApprovalStatus.APPROVED);
+		approvals.put(8L, MemberApprovalStatus.EXCLUDED);
+		approvals.put(9L, MemberApprovalStatus.PENDING);
+		CommunityLootshareHostMessage withApprovals =
+			new CommunityLootshareHostMessage(7L, settings, 2L, approvals);
+		withApprovals.setMemberId(7L);
+		assertEquals(MemberApprovalStatus.EXCLUDED,
+			withApprovals.decode().get().getApprovalStatuses().get(8L));
+		assertFalse(withApprovals.decode().get().getApprovalStatuses().containsKey(9L));
+
+		CommunityLootshareHostMessage transfer = new CommunityLootshareHostMessage(8L, 100_000L, 2L);
+		transfer.setMemberId(7L);
+		assertEquals(8L, transfer.decode().get().getHostMemberId());
+	}
+
+	@Test
+	public void hostDecoderRejectsUnsupportedOrMalformedPayloads()
+	{
+		assertFalse(host(validHostJson().replace("\"protocolVersion\":3", "\"protocolVersion\":2"), 1L)
+			.decode().isPresent());
+		assertFalse(host(validHostJson(), 0L).decode().isPresent());
+		assertFalse(host(validHostJson().replace("\"hostMemberId\":1", "\"hostMemberId\":0"), 1L)
+			.decode().isPresent());
+		assertFalse(host(validHostJson().replace("\"minimumSharedLootValue\":100000",
+			"\"minimumSharedLootValue\":-1"), 1L).decode().isPresent());
+		assertFalse(host(validHostJson().replace("\"minimumSharedLootValue\":100000",
+			"\"minimumSharedLootValue\":2147483648"), 1L).decode().isPresent());
+		assertFalse(host(validHostJson().replace("\"revision\":1", "\"revision\":0"), 1L)
+			.decode().isPresent());
+		assertFalse(host(validHostJson().replace("GRAND_EXCHANGE", "NOT_A_PRICE_BASIS"), 1L)
+			.decode().isPresent());
+		assertFalse(host(validHostJson().replace("\"lootValueBasis\":\"GRAND_EXCHANGE\"",
+			"\"lootValueBasis\":null"), 1L).decode().isPresent());
+		assertFalse(host(validHostJson().replace("\"captureUnknownLoot\":true,", ""), 1L)
+			.decode().isPresent());
+		assertFalse(host(validHostJson().replace("\"captureNpcLoot\":true",
+			"\"captureNpcLoot\":null"), 1L).decode().isPresent());
+		assertFalse(host(validHostJson().replace(
+			"\"memberApprovals\":[{\"memberId\":1,\"status\":\"APPROVED\"}],", ""), 1L)
+			.decode().isPresent());
+		assertFalse(host(validHostJson().replace(
+			"\"memberApprovals\":[{\"memberId\":1,\"status\":\"APPROVED\"}]",
+			"\"memberApprovals\":null"), 1L).decode().isPresent());
+		assertFalse(host(validHostJson().replace("\"status\":\"APPROVED\"",
+			"\"status\":\"EXCLUDED\""), 1L).decode().isPresent());
+		assertFalse(host(validHostJson().replace("\"status\":\"APPROVED\"",
+			"\"status\":\"NOT_A_STATUS\""), 1L).decode().isPresent());
+		assertFalse(host(validHostJson().replace(
+			"{\"memberId\":1,\"status\":\"APPROVED\"}",
+			"{\"memberId\":1,\"status\":\"APPROVED\"},{\"memberId\":1,\"status\":\"APPROVED\"}"),
+			1L).decode().isPresent());
+		expectIllegal(() -> new CommunityLootshareHostMessage(0L, 0L, 1L));
+		expectIllegal(() -> new CommunityLootshareHostMessage(1L, (LootshareSettings) null, 1L));
+		expectIllegal(() -> new CommunityLootshareHostMessage(1L, LootshareSettings.defaults(), 1L,
+			Collections.singletonMap(1L, MemberApprovalStatus.EXCLUDED)));
+	}
+
+	@Test
 	public void proposalDecoderRejectsUnsupportedOrMalformedPayloads()
 	{
 		assertFalse(proposal("{\"protocolVersion\":2,\"items\":[]}", 1L).decode(1L).isPresent());
@@ -119,24 +201,25 @@ public class CommunityLootsharePartyMessageTest
 	@Test
 	public void decisionDecoderRejectsUnsupportedOrMalformedPayloads()
 	{
-		assertFalse(decision("{\"protocolVersion\":2}", 1L).decode().isPresent());
+		assertFalse(decision(validDecisionJson().replace("\"protocolVersion\":2",
+			"\"protocolVersion\":1"), 1L).decode().isPresent());
 		assertFalse(decision(validDecisionJson(), 0L).decode().isPresent());
-		assertFalse(decision("{\"protocolVersion\":1,\"proposalId\":\"\",\"decision\":\"REJECTED\","
+		assertFalse(decision("{\"protocolVersion\":2,\"proposalId\":\"\",\"decision\":\"REJECTED\","
 			+ "\"decidedAtEpochMilli\":0,\"participants\":[]}", 1L).decode().isPresent());
-		assertFalse(decision("{\"protocolVersion\":1,\"proposalId\":\"p\",\"decision\":\"PENDING\","
+		assertFalse(decision("{\"protocolVersion\":2,\"proposalId\":\"p\",\"decision\":\"PENDING\","
 			+ "\"decidedAtEpochMilli\":0,\"participants\":[]}", 1L).decode().isPresent());
-		assertFalse(decision("{\"protocolVersion\":1,\"proposalId\":\"p\",\"decision\":\"ACCEPTED\","
+		assertFalse(decision("{\"protocolVersion\":2,\"proposalId\":\"p\",\"decision\":\"ACCEPTED\","
 			+ "\"decidedAtEpochMilli\":0,\"participants\":[]}", 1L).decode().isPresent());
-		assertFalse(decision("{\"protocolVersion\":1,\"proposalId\":\"p\",\"decision\":\"REJECTED\","
+		assertFalse(decision("{\"protocolVersion\":2,\"proposalId\":\"p\",\"decision\":\"REJECTED\","
 			+ "\"decidedAtEpochMilli\":0,\"participants\":[{\"memberId\":1,\"displayName\":\"Alice\"}]}", 1L)
 			.decode().isPresent());
-		assertFalse(decision("{\"protocolVersion\":1,\"proposalId\":\"p\",\"decision\":\"ACCEPTED\","
+		assertFalse(decision("{\"protocolVersion\":2,\"proposalId\":\"p\",\"decision\":\"ACCEPTED\","
 			+ "\"decidedAtEpochMilli\":0,\"participants\":[null]}", 1L).decode().isPresent());
-		assertFalse(decision("{\"protocolVersion\":1,\"proposalId\":\"p\",\"decision\":\"ACCEPTED\","
+		assertFalse(decision("{\"protocolVersion\":2,\"proposalId\":\"p\",\"decision\":\"ACCEPTED\","
 			+ "\"decidedAtEpochMilli\":0,\"participants\":null}", 1L).decode().isPresent());
 		String tooManyParticipants = String.join(",", Collections.nCopies(LootProposal.MAX_PARTICIPANTS + 1,
 			"{\"memberId\":1,\"displayName\":\"Alice\"}"));
-		assertFalse(decision("{\"protocolVersion\":1,\"proposalId\":\"p\",\"decision\":\"ACCEPTED\","
+		assertFalse(decision("{\"protocolVersion\":2,\"proposalId\":\"p\",\"decision\":\"ACCEPTED\","
 			+ "\"decidedAtEpochMilli\":0,\"participants\":[" + tooManyParticipants + "]}", 1L)
 			.decode().isPresent());
 		expectIllegal(() -> new CommunityLootshareDecisionMessage(null));
@@ -157,6 +240,13 @@ public class CommunityLootsharePartyMessageTest
 		return message;
 	}
 
+	private CommunityLootshareHostMessage host(String json, long memberId)
+	{
+		CommunityLootshareHostMessage message = gson.fromJson(json, CommunityLootshareHostMessage.class);
+		message.setMemberId(memberId);
+		return message;
+	}
+
 	private static String validProposalJson()
 	{
 		return "{\"protocolVersion\":1,\"proposalId\":\"p\",\"recipient\":\"Alice\","
@@ -166,8 +256,18 @@ public class CommunityLootsharePartyMessageTest
 
 	private static String validDecisionJson()
 	{
-		return "{\"protocolVersion\":1,\"proposalId\":\"p\",\"decision\":\"REJECTED\","
+		return "{\"protocolVersion\":2,\"proposalId\":\"p\",\"decision\":\"REJECTED\","
 			+ "\"decidedAtEpochMilli\":0,\"participants\":[]}";
+	}
+
+	private static String validHostJson()
+	{
+		return "{\"protocolVersion\":3,\"hostMemberId\":1,"
+			+ "\"minimumSharedLootValue\":100000,\"lootValueBasis\":\"GRAND_EXCHANGE\","
+			+ "\"captureNpcLoot\":true,\"captureEventLoot\":true,\"capturePlayerLoot\":true,"
+			+ "\"capturePickpocketLoot\":true,\"captureUnknownLoot\":true,"
+			+ "\"includeLoggedOutMembers\":false,"
+			+ "\"memberApprovals\":[{\"memberId\":1,\"status\":\"APPROVED\"}],\"revision\":1}";
 	}
 
 	private static LootProposal pending(String id)

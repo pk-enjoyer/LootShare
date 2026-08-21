@@ -435,15 +435,15 @@ public final class PanelTour
 		}
 	}
 
-	private interface ActionDispatcher
-	{
-		void dispatch(PanelActions actions);
-	}
-
 	private enum Mode
 	{
 		QUICK,
 		UPDATE_INFO
+	}
+
+	private interface ActionDispatcher
+	{
+		void dispatch(PanelActions actions);
 	}
 
 	public interface Targets

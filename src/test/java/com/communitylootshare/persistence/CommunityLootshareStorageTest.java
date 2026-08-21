@@ -10,6 +10,9 @@ import com.communitylootshare.domain.CommunityLootshareState;
 import com.communitylootshare.domain.LootProposal;
 import com.communitylootshare.domain.LootProposalStatus;
 import com.communitylootshare.domain.LootshareParticipant;
+import com.communitylootshare.domain.LootshareSettings;
+import com.communitylootshare.domain.LootValueBasis;
+import com.communitylootshare.domain.MemberApprovalStatus;
 import com.communitylootshare.domain.SharedLootEvent;
 import com.communitylootshare.domain.SharedLootItem;
 import com.communitylootshare.sessions.CommunityLootshareEngine;
@@ -59,6 +62,13 @@ public class CommunityLootshareStorageTest
 		assertEquals(101, proposal.getEvent().getItems().get(0).getPricingId());
 		assertEquals(50L, proposal.getEvent().getItems().get(0).getUnitPrice());
 		assertEquals(100L, proposal.getEvent().getTotal());
+		assertEquals(1L, restored.getActiveHostMemberId());
+		assertEquals(100_000L, restored.getActiveMinimumSharedLootValue());
+		assertEquals(LootValueBasis.HIGH_ALCHEMY,
+			restored.getActiveHostSettings().get().getLootValueBasis());
+		assertTrue(restored.getActiveHostSettings().get().isIncludeLoggedOutMembers());
+		assertEquals(MemberApprovalStatus.APPROVED, restored.getActiveMemberApprovalStatus(1L));
+		assertEquals(MemberApprovalStatus.EXCLUDED, restored.getActiveMemberApprovalStatus(2L));
 	}
 
 	@Test
@@ -73,6 +83,11 @@ public class CommunityLootshareStorageTest
 		assertTrue(storage.load(empty).isWritable());
 		assertTrue(storage.load(empty).getState().getProposals().isEmpty());
 		assertFalse(storage.load(null).isWritable());
+
+		File schemaOne = temporaryFolder.newFile("schema-one.json");
+		Files.write(schemaOne.toPath(), Collections.singletonList(
+			"{\"schemaVersion\":1,\"proposals\":[],\"sessions\":[]}"), StandardCharsets.UTF_8);
+		assertTrue(storage.load(schemaOne).isWritable());
 	}
 
 	@Test
@@ -84,7 +99,8 @@ public class CommunityLootshareStorageTest
 		assertFalse(storage.load(malformed).isWritable());
 
 		File future = temporaryFolder.newFile("future.json");
-		Files.write(future.toPath(), Collections.singletonList("{\"schemaVersion\":2}"), StandardCharsets.UTF_8);
+		Files.write(future.toPath(), Collections.singletonList("{\"schemaVersion\":"
+			+ (CommunityLootshareState.CURRENT_SCHEMA_VERSION + 1) + "}"), StandardCharsets.UTF_8);
 		assertFalse(storage.load(future).isWritable());
 
 		File invalidSchema = temporaryFolder.newFile("invalid-schema.json");
@@ -97,6 +113,32 @@ public class CommunityLootshareStorageTest
 
 		File directory = temporaryFolder.newFolder("not-a-file");
 		assertFalse(storage.load(directory).isWritable());
+	}
+
+	@Test
+	public void migratesThresholdOnlySchemaTwoHostStateToDefaultPolicy() throws Exception
+	{
+		File file = temporaryFolder.newFile("schema-two-host.json");
+		Files.write(file.toPath(), Collections.singletonList(
+			"{\"schemaVersion\":2,\"activeSessionId\":\"legacy-host\",\"proposals\":[],"
+				+ "\"sessions\":[{\"sessionId\":\"legacy-host\",\"partyId\":10,"
+				+ "\"startedAt\":\"1970-01-01T00:00:00Z\",\"hostMemberId\":1,"
+				+ "\"minimumSharedLootValue\":123,\"hostRevision\":1,\"acceptedProposals\":[]}]}"),
+			StandardCharsets.UTF_8);
+		CommunityLootshareStorage storage = new CommunityLootshareStorage(file, gson);
+
+		CommunityLootshareStorage.LoadResult loaded = storage.load(file);
+		CommunityLootshareEngine restored = new CommunityLootshareEngine();
+		restored.restore(loaded.getState());
+
+		assertTrue(loaded.isWritable());
+		assertEquals(123L, restored.getActiveHostSettings().get().getMinimumSharedLootValue());
+		assertEquals(LootValueBasis.GRAND_EXCHANGE,
+			restored.getActiveHostSettings().get().getLootValueBasis());
+		assertTrue(restored.getActiveHostSettings().get().isCaptureNpcLoot());
+		assertFalse(restored.getActiveHostSettings().get().isIncludeLoggedOutMembers());
+		assertEquals(MemberApprovalStatus.APPROVED, restored.getActiveMemberApprovalStatus(1L));
+		assertEquals(MemberApprovalStatus.PENDING, restored.getActiveMemberApprovalStatus(2L));
 	}
 
 	@Test
@@ -148,6 +190,9 @@ public class CommunityLootshareStorageTest
 	{
 		CommunityLootshareEngine engine = new CommunityLootshareEngine();
 		engine.enterParty(10L, "session", Instant.EPOCH);
+		engine.updateHostState(1L, 1L, new LootshareSettings(100_000L, LootValueBasis.HIGH_ALCHEMY,
+			true, false, true, false, true, true), 1L);
+		engine.updateMemberApprovalStatus(1L, 2L, MemberApprovalStatus.EXCLUDED, 2L);
 		SharedLootEvent event = new SharedLootEvent("p1", "Alice", "Boss", Instant.ofEpochSecond(1),
 			Collections.singletonList(new SharedLootItem(100, 101, 2, 50)));
 		engine.addProposal(LootProposal.pending(10L, 1L, event));

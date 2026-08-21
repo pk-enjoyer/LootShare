@@ -18,7 +18,7 @@ import net.runelite.client.party.messages.PartyMemberMessage;
 
 public class CommunityLootshareDecisionMessage extends PartyMemberMessage
 {
-	public static final int PROTOCOL_VERSION = 1;
+	public static final int PROTOCOL_VERSION = 2;
 
 	private int protocolVersion = PROTOCOL_VERSION;
 	private String proposalId;

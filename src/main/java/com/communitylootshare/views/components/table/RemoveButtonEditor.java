@@ -5,12 +5,12 @@
 
 package com.communitylootshare.views.components.table;
 
-import com.formdev.flatlaf.extras.FlatSVGIcon;
 import com.communitylootshare.ManagerSession;
 import com.communitylootshare.controllers.PanelActions;
 import com.communitylootshare.models.Metrics;
 import com.communitylootshare.ui.UiInteractionGateway;
 import com.communitylootshare.views.components.PanelTheme;
+import com.formdev.flatlaf.extras.FlatSVGIcon;
 import java.awt.Component;
 import javax.swing.BorderFactory;
 import javax.swing.DefaultCellEditor;
