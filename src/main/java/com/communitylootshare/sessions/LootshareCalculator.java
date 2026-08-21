@@ -43,8 +43,7 @@ public class LootshareCalculator
 			}
 			totalAcceptedValue = Math.addExact(totalAcceptedValue, eventValue);
 			includedLoot.add(new LootshareCalculation.IncludedLoot(proposal.getProposalId(),
-				proposal.getOwnerMemberId(), proposal.getEvent().getRecipient(), eventValue,
-				proposal.getEvent().getCapturedAt(), proposal.getDecidedAt()));
+				eventValue, proposal.getEvent().getCapturedAt(), proposal.getDecidedAt()));
 
 			List<LootshareParticipant> participants = proposal.getParticipants();
 			long baseShare = eventValue / participants.size();

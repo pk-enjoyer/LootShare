@@ -70,26 +70,21 @@ public final class LootshareCalculation
 	public static final class IncludedLoot
 	{
 		private final String proposalId;
-		private final long ownerMemberId;
-		private final String ownerDisplayName;
 		private final long value;
 		private final Instant capturedAt;
 		private final Instant decidedAt;
 
-		public IncludedLoot(String proposalId, long ownerMemberId, String ownerDisplayName, long value,
+		public IncludedLoot(String proposalId, long value,
 		                    Instant capturedAt, Instant decidedAt)
 		{
-			LootshareParticipant owner = new LootshareParticipant(ownerMemberId, ownerDisplayName);
 			if (proposalId == null || proposalId.trim().isEmpty()
 				|| proposalId.trim().length() > SharedLootEvent.MAX_PROPOSAL_ID_LENGTH
 				|| value < 0L || capturedAt == null || decidedAt == null || decidedAt.isBefore(capturedAt))
 			{
 				throw new IllegalArgumentException("Included loot requires valid proposal, owner, value, and times");
-			}
-			this.proposalId = proposalId.trim();
-			this.ownerMemberId = owner.getMemberId();
-			this.ownerDisplayName = owner.getDisplayName();
-			this.value = value;
+		}
+		this.proposalId = proposalId.trim();
+		this.value = value;
 			this.capturedAt = capturedAt;
 			this.decidedAt = decidedAt;
 		}
@@ -97,16 +92,6 @@ public final class LootshareCalculation
 		public String getProposalId()
 		{
 			return proposalId;
-		}
-
-		public long getOwnerMemberId()
-		{
-			return ownerMemberId;
-		}
-
-		public String getOwnerDisplayName()
-		{
-			return ownerDisplayName;
 		}
 
 		public long getValue()

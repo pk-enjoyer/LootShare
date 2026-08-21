@@ -6,7 +6,6 @@
 package com.communitylootshare.views.components;
 
 import java.awt.Color;
-import javax.swing.AbstractButton;
 
 /**
  * Local Swing theme values matching RuneLite's dark panel palette.
@@ -25,10 +24,4 @@ public final class PanelTheme
 	{
 	}
 
-	public static void styleIconButton(AbstractButton button)
-	{
-		button.setFocusPainted(false);
-		button.setContentAreaFilled(false);
-		button.setOpaque(false);
-	}
 }

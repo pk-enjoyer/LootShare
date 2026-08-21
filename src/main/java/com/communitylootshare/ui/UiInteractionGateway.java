@@ -18,9 +18,5 @@ public interface UiInteractionGateway
 
 	String prompt(Component parent, String title, String message);
 
-	HistoryExportChoice chooseHistoryExport(Component parent);
-
 	void writeClipboardText(String text);
-
-	String readClipboardText();
 }

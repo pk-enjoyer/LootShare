@@ -8,10 +8,7 @@ package com.communitylootshare.ui;
 import java.awt.Component;
 import java.awt.HeadlessException;
 import java.awt.Toolkit;
-import java.awt.datatransfer.DataFlavor;
 import java.awt.datatransfer.StringSelection;
-import java.awt.datatransfer.UnsupportedFlavorException;
-import java.io.IOException;
 import javax.inject.Singleton;
 import javax.swing.JOptionPane;
 import lombok.extern.slf4j.Slf4j;
@@ -51,30 +48,6 @@ public class SwingUiInteractionGateway implements UiInteractionGateway
 	}
 
 	@Override
-	public HistoryExportChoice chooseHistoryExport(Component parent)
-	{
-		Object[] options = {"All history", "Selected session", "Cancel"};
-		int choice = JOptionPane.showOptionDialog(
-			parent,
-			"Export all history or the currently selected session?",
-			"Export",
-			JOptionPane.DEFAULT_OPTION,
-			JOptionPane.QUESTION_MESSAGE,
-			null,
-			options,
-			options[0]);
-		if (choice == 0)
-		{
-			return HistoryExportChoice.ALL;
-		}
-		if (choice == 1)
-		{
-			return HistoryExportChoice.SELECTED;
-		}
-		return HistoryExportChoice.CANCEL;
-	}
-
-	@Override
 	public void writeClipboardText(String text)
 	{
 		try
@@ -88,18 +61,4 @@ public class SwingUiInteractionGateway implements UiInteractionGateway
 		}
 	}
 
-	@Override
-	public String readClipboardText()
-	{
-		try
-		{
-			Object data = Toolkit.getDefaultToolkit().getSystemClipboard().getData(DataFlavor.stringFlavor);
-			return data == null ? null : data.toString();
-		}
-		catch (UnsupportedFlavorException | IOException | IllegalStateException | HeadlessException e)
-		{
-			log.warn("Failed to read clipboard text", e);
-			return null;
-		}
-	}
 }

@@ -5,7 +5,6 @@
 
 package com.communitylootshare.testing;
 
-import com.communitylootshare.ui.HistoryExportChoice;
 import com.communitylootshare.ui.UiInteractionGateway;
 import java.awt.Component;
 import java.util.ArrayList;
@@ -16,7 +15,6 @@ public class RecordingUiInteractions implements UiInteractionGateway
 {
 	private final List<String> messages = new ArrayList<>();
 	private boolean confirmResult = true;
-	private HistoryExportChoice exportChoice = HistoryExportChoice.CANCEL;
 	private String clipboardText;
 	private String promptResult;
 
@@ -39,31 +37,14 @@ public class RecordingUiInteractions implements UiInteractionGateway
 	}
 
 	@Override
-	public HistoryExportChoice chooseHistoryExport(Component parent)
-	{
-		return exportChoice;
-	}
-
-	@Override
 	public void writeClipboardText(String text)
 	{
 		clipboardText = text;
 	}
 
-	@Override
-	public String readClipboardText()
-	{
-		return clipboardText;
-	}
-
 	public void setConfirmResult(boolean confirmResult)
 	{
 		this.confirmResult = confirmResult;
-	}
-
-	public void setExportChoice(HistoryExportChoice exportChoice)
-	{
-		this.exportChoice = exportChoice;
 	}
 
 	public void setClipboardText(String clipboardText)
