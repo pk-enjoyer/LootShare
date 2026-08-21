@@ -20,6 +20,7 @@ public interface CommunityLootshareConfig extends Config
 	String CAPTURE_PICKPOCKET_LOOT_KEY = "capturePickpocketLoot";
 	String CAPTURE_UNKNOWN_LOOT_KEY = "captureUnknownLoot";
 	String INCLUDE_LOGGED_OUT_MEMBERS_KEY = "includeLoggedOutMembers";
+	String ALLOW_MEMBER_MANUAL_GP_KEY = "allowMemberManualGp";
 	int DEFAULT_MINIMUM_SHARED_LOOT_VALUE = 100_000;
 
 	@ConfigSection(
@@ -125,6 +126,18 @@ public interface CommunityLootshareConfig extends Config
 		section = HOSTED_PARTY_SETTINGS
 	)
 	default boolean includeLoggedOutMembers()
+	{
+		return false;
+	}
+
+	@ConfigItem(
+		keyName = ALLOW_MEMBER_MANUAL_GP_KEY,
+		name = "Allow member manual GP",
+		description = "Allow approved Party members to add manual GP to themselves. The host can always add GP to an approved member.",
+		position = 8,
+		section = HOSTED_PARTY_SETTINGS
+	)
+	default boolean allowMemberManualGp()
 	{
 		return false;
 	}

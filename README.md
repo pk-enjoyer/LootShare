@@ -78,16 +78,13 @@ loot are never inserted into RuneLite's `PartyService`, sent over Party
 messages, or written to Community Lootshare profile history. The controls are
 not available in a normal non-developer RuneLite launch.
 
-## Retained Migration Code
+## Manual GP
 
-The repository still contains the earlier Auto Split Manager implementation
-inside the `com.communitylootshare` namespace. Its legacy class names are
-retained as migration/reference code and its headless tests still run, but it
-is not the plugin declared in `runelite-plugin.properties` and is not loaded by
-`./gradlew run`.
-
-`./gradlew uiPreview` likewise opens only the retained Auto Split Manager stub
-UI. It is not a preview of Community Lootshare.
+The Party host can add a manual GP contribution to any approved member. The
+host may enable **Allow member manual GP** to let approved members add GP only
+to themselves. These contributions use the same Party-synchronised proposal,
+settlement, and persisted-history paths as captured loot; OSRS chat commands
+and chat value parsing are not supported.
 
 ## Development
 

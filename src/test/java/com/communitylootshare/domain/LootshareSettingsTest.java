@@ -28,6 +28,7 @@ public class LootshareSettingsTest
 		assertTrue(settings.isCapturePickpocketLoot());
 		assertTrue(settings.isCaptureUnknownLoot());
 		assertFalse(settings.isIncludeLoggedOutMembers());
+		assertFalse(settings.isAllowMemberManualGp());
 		assertEquals("Grand Exchange", settings.getLootValueBasis().getDisplayName());
 		assertEquals("Grand Exchange", settings.getLootValueBasis().toString());
 
@@ -54,6 +55,12 @@ public class LootshareSettingsTest
 		assertTrue(custom.isCapturePickpocketLoot());
 		assertFalse(custom.isCaptureUnknownLoot());
 		assertTrue(custom.isIncludeLoggedOutMembers());
+		assertFalse(custom.isAllowMemberManualGp());
+
+		LootshareSettings selfAttributionEnabled = new LootshareSettings(0L, LootValueBasis.HIGH_ALCHEMY,
+			false, true, false, true, false, true, true);
+		assertTrue(selfAttributionEnabled.isAllowMemberManualGp());
+		assertFalse(selfAttributionEnabled.equals(custom));
 		assertFalse(custom.equals(LootshareSettings.defaults(0L)));
 
 		expectIllegal(() -> LootshareSettings.defaults(-1L));

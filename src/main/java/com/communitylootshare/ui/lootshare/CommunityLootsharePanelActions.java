@@ -32,6 +32,10 @@ public interface CommunityLootsharePanelActions
 	{
 	}
 
+	default void addManualGp(long memberId, long amount)
+	{
+	}
+
 	default void startDebugSimulation()
 	{
 	}

@@ -29,5 +29,6 @@ public class CommunityLootshareConfigTest
 		assertTrue(config.capturePickpocketLoot());
 		assertTrue(config.captureUnknownLoot());
 		assertFalse(config.includeLoggedOutMembers());
+		assertFalse(config.allowMemberManualGp());
 	}
 }

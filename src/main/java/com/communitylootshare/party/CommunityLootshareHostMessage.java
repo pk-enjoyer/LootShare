@@ -23,7 +23,7 @@ import net.runelite.client.party.messages.PartyMemberMessage;
  */
 public class CommunityLootshareHostMessage extends PartyMemberMessage
 {
-	public static final int PROTOCOL_VERSION = 3;
+	public static final int PROTOCOL_VERSION = 4;
 
 	private int protocolVersion = PROTOCOL_VERSION;
 	private long hostMemberId;
@@ -35,6 +35,7 @@ public class CommunityLootshareHostMessage extends PartyMemberMessage
 	private Boolean capturePickpocketLoot;
 	private Boolean captureUnknownLoot;
 	private Boolean includeLoggedOutMembers;
+	private Boolean allowMemberManualGp;
 	private List<MemberApproval> memberApprovals;
 	private long revision;
 
@@ -71,6 +72,7 @@ public class CommunityLootshareHostMessage extends PartyMemberMessage
 		this.capturePickpocketLoot = validatedSettings.isCapturePickpocketLoot();
 		this.captureUnknownLoot = validatedSettings.isCaptureUnknownLoot();
 		this.includeLoggedOutMembers = validatedSettings.isIncludeLoggedOutMembers();
+		this.allowMemberManualGp = validatedSettings.isAllowMemberManualGp();
 		Map<Long, MemberApprovalStatus> normalized = validateApprovals(hostMemberId, approvalStatuses);
 		this.memberApprovals = new ArrayList<>(normalized.size());
 		for (Map.Entry<Long, MemberApprovalStatus> entry : normalized.entrySet())
@@ -113,7 +115,7 @@ public class CommunityLootshareHostMessage extends PartyMemberMessage
 
 	public Optional<DecodedHostState> decode()
 	{
-		if (protocolVersion != PROTOCOL_VERSION || getMemberId() <= 0L
+		if ((protocolVersion != 3 && protocolVersion != PROTOCOL_VERSION) || getMemberId() <= 0L
 			|| hostMemberId <= 0L || revision <= 0L || minimumSharedLootValue == null
 			|| captureNpcLoot == null || captureEventLoot == null || capturePlayerLoot == null
 			|| capturePickpocketLoot == null || captureUnknownLoot == null
@@ -128,7 +130,8 @@ public class CommunityLootshareHostMessage extends PartyMemberMessage
 			LootshareSettings settings = new LootshareSettings(minimumSharedLootValue, basis,
 				captureNpcLoot.booleanValue(), captureEventLoot.booleanValue(), capturePlayerLoot.booleanValue(),
 				capturePickpocketLoot.booleanValue(), captureUnknownLoot.booleanValue(),
-				includeLoggedOutMembers.booleanValue());
+				includeLoggedOutMembers.booleanValue(),
+				allowMemberManualGp != null && allowMemberManualGp.booleanValue());
 			Map<Long, MemberApprovalStatus> approvals = new LinkedHashMap<>();
 			for (MemberApproval approval : memberApprovals)
 			{

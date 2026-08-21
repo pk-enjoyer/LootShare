@@ -5,7 +5,6 @@
 
 package com.communitylootshare.views.graph;
 
-import com.communitylootshare.utils.Formats;
 import com.communitylootshare.views.components.PanelTheme;
 import java.awt.BasicStroke;
 import java.awt.Color;
@@ -291,12 +290,18 @@ public class SessionGraphPanel extends JPanel
 		long abs = Math.abs(amount);
 		if (abs >= 1_000_000_000L)
 		{
-			return Formats.OsrsAmountFormatter.toSuffixString(amount, 'b');
+			return formatWithSuffix(amount, 1_000_000_000L, "B");
 		}
 		if (abs >= 1_000_000L)
 		{
-			return Formats.OsrsAmountFormatter.toSuffixString(amount, 'm');
+			return formatWithSuffix(amount, 1_000_000L, "M");
 		}
-		return Formats.OsrsAmountFormatter.toSuffixString(amount, 'k');
+		return formatWithSuffix(amount, 1_000L, "K");
+	}
+
+	private String formatWithSuffix(long amount, long divisor, String suffix)
+	{
+		return String.format(java.util.Locale.US, "%.3f%s", amount / (double) divisor, suffix)
+			.replaceAll("(\\.0+|(?<=\\.[0-9])0+)(?=[A-Z])", "");
 	}
 }

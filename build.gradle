@@ -50,24 +50,9 @@ jacoco {
 
 def jacocoUnitTestExcludes = [
 	'com/communitylootshare/CommunityLootsharePlugin*',
-	'com/communitylootshare/ManagerPlugin*',
-	'com/communitylootshare/ManagerPanel*',
-	'com/communitylootshare/PluginConfig*',
-	'com/communitylootshare/controllers/**',
 	'com/communitylootshare/integration/**',
-	'com/communitylootshare/models/SplitEvent*',
-	'com/communitylootshare/models/PendingValue*',
-	'com/communitylootshare/models/PlayerMetrics*',
-	'com/communitylootshare/models/Transfer*',
 	'com/communitylootshare/ui/**',
-	'com/communitylootshare/utils/ChatStatusOverlay*',
 	'com/communitylootshare/views/**'
-]
-
-def jacocoUiCoverageIncludes = [
-	'com/communitylootshare/controllers/PanelController*',
-	'com/communitylootshare/views/HistoryTableModel*',
-	'com/communitylootshare/views/HistoryEditorPanel*'
 ]
 
 test {
@@ -102,40 +87,7 @@ jacocoTestCoverageVerification {
 	}
 }
 
-tasks.register('jacocoUiTestReport', JacocoReport) {
-	dependsOn test
-	sourceDirectories.setFrom(files(sourceSets.main.allSource.srcDirs))
-	classDirectories.setFrom(files(sourceSets.main.output.classesDirs.files.collect {
-		fileTree(dir: it, include: jacocoUiCoverageIncludes)
-	}))
-	executionData.setFrom(layout.buildDirectory.file('jacoco/test.exec'))
-	reports {
-		xml.required = true
-		html.required = true
-		html.outputLocation = layout.buildDirectory.dir('reports/jacoco/uiTest/html')
-		xml.outputLocation = layout.buildDirectory.file('reports/jacoco/uiTest/jacocoUiTestReport.xml')
-	}
-}
-
-tasks.register('jacocoUiCoverageVerification', JacocoCoverageVerification) {
-	dependsOn test
-	classDirectories.setFrom(files(sourceSets.main.output.classesDirs.files.collect {
-		fileTree(dir: it, include: jacocoUiCoverageIncludes)
-	}))
-	executionData.setFrom(layout.buildDirectory.file('jacoco/test.exec'))
-	violationRules {
-		rule {
-			limit {
-				counter = 'LINE'
-				value = 'COVEREDRATIO'
-				minimum = 0.90
-			}
-		}
-	}
-}
-
 check.dependsOn jacocoTestCoverageVerification
-check.dependsOn tasks.named('jacocoUiCoverageVerification')
 
 def isRuneLiteClientJar = { File file ->
 	file.name ==~ /client-\d+\.\d+\.\d+(\.\d+)?(-\d{8}\.\d{6}-\d+)?\.jar/ &&
@@ -182,15 +134,6 @@ tasks.register('run', JavaExec) {
 	mainClass.set('com.communitylootshare.CommunityLootsharePluginTest')
 	jvmArgs '-ea'
 	args '--developer-mode', '--debug'
-}
-
-tasks.register('uiPreview', JavaExec) {
-	group = 'verification'
-	description = 'Open the retained Auto Split Manager migration UI with stub data; this is not Community Lootshare.'
-	dependsOn tasks.named('testClasses')
-	classpath = sourceSets.test.runtimeClasspath
-	mainClass.set('com.communitylootshare.views.UiPreview')
-	jvmArgs '-Djava.awt.headless=false'
 }
 
 tasks.register('shadowJar', Jar) {

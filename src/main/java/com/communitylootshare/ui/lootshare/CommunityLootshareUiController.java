@@ -494,6 +494,21 @@ public class CommunityLootshareUiController implements CommunityLootsharePanelAc
 	}
 
 	@Override
+	public void addManualGp(long memberId, long amount)
+	{
+		if (!isStarted() || isDebugSimulationActive())
+		{
+			return;
+		}
+		clientThread.invokeLater(() -> {
+			if (isStarted() && partyService.isInParty())
+			{
+				lootshareController.addManualGp(memberId, amount);
+			}
+		});
+	}
+
+	@Override
 	public boolean addDebugLoot(long ownerMemberId, LootPreset lootPreset, long totalValue)
 	{
 		if (lootPreset == null)

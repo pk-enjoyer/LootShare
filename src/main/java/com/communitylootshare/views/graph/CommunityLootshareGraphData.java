@@ -8,9 +8,11 @@ package com.communitylootshare.views.graph;
 import com.communitylootshare.domain.LootshareCalculation;
 import com.communitylootshare.domain.LootshareSession;
 import com.communitylootshare.domain.MemberApprovalStatus;
-import com.communitylootshare.utils.Formats;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.time.format.FormatStyle;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -23,6 +25,8 @@ import java.util.stream.Collectors;
 public final class CommunityLootshareGraphData
 {
 	private static final int MAX_BAR_ENTRIES = 12;
+	private static final DateTimeFormatter LOCAL_TIME = DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT)
+		.withZone(ZoneId.systemDefault());
 
 	private CommunityLootshareGraphData()
 	{
@@ -95,12 +99,12 @@ public final class CommunityLootshareGraphData
 			cumulative = Math.addExact(cumulative, included.getValue());
 			Instant at = included.getCapturedAt().isBefore(start) ? start : included.getCapturedAt();
 			lastAt = at;
-			entries.add(new SessionGraphEntry(Formats.getLocalTime().format(at),
+			entries.add(new SessionGraphEntry(LOCAL_TIME.format(at),
 				hourlyRate(cumulative, Duration.between(start, at)), true));
 		}
 		if (active && cumulative > 0L && !end.equals(lastAt))
 		{
-			entries.add(new SessionGraphEntry(Formats.getLocalTime().format(end),
+			entries.add(new SessionGraphEntry(LOCAL_TIME.format(end),
 				hourlyRate(cumulative, Duration.between(start, end)), true));
 		}
 		return entries;

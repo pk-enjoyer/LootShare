@@ -148,10 +148,11 @@ public class CommunityLootsharePanelTest
 			assertTrue(panel.getHostedSettingsToggle().getText().contains("Alice (you)"));
 			panel.getHostedSettingsToggle().doClick();
 			assertTrue(panel.getHostedSettingsBody().isVisible());
-			assertEquals(9, panel.getHostedSettingsBody().getComponentCount());
+			assertEquals(10, panel.getHostedSettingsBody().getComponentCount());
 			assertTrue(containsText(panel.getHostedSettingsBody(), "250,000 gp"));
 			assertTrue(containsText(panel.getHostedSettingsBody(), "High alchemy"));
 			assertTrue(containsText(panel.getHostedSettingsBody(), "Excluded"));
+			assertTrue(containsText(panel.getHostedSettingsBody(), "Member manual GP"));
 
 			panel.render(new CommunityLootsharePanelState(true, false, null, Collections.emptyList()));
 			assertFalse(panel.getHostedSettingsSection().isVisible());

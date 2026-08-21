@@ -168,6 +168,23 @@ public class CommunityLootshareControllerTest
 	}
 
 	@Test
+	public void hostCanAttributeManualGpToAnApprovedMember()
+	{
+		assertEquals(MutationResult.APPLIED, controller.setMemberApproved(remoteMember.getMemberId(), true));
+
+		assertEquals(MutationResult.APPLIED, controller.addManualGp(remoteMember.getMemberId(), 1_000L));
+
+		LootProposal proposal = engine.getActiveSession().get().getAcceptedProposals().get(0);
+		assertEquals(remoteMember.getMemberId(), proposal.getOwnerMemberId());
+		assertEquals("Manual GP", proposal.getEvent().getSourceLabel());
+		assertEquals(1_000L, proposal.getEvent().getTotal());
+		verify(partyService).send(org.mockito.ArgumentMatchers.argThat(message ->
+			message instanceof CommunityLootshareProposalMessage
+				&& ((CommunityLootshareProposalMessage) message).isManualGp()
+				&& ((CommunityLootshareProposalMessage) message).getOwnerMemberId() == remoteMember.getMemberId()));
+	}
+
+	@Test
 	public void capturesServerNpcLootDirectlyWithEveryReportedStack()
 	{
 		NPCComposition composition = mock(NPCComposition.class);

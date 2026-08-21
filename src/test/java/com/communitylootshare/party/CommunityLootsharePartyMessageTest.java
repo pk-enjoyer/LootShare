@@ -115,6 +115,7 @@ public class CommunityLootsharePartyMessageTest
 		assertEquals(7L, initialState.getHostMemberId());
 		assertEquals(100_000L, initialState.getMinimumSharedLootValue());
 		assertEquals(settings, initialState.getSettings());
+		assertFalse(initialState.getSettings().isAllowMemberManualGp());
 		assertEquals(1L, initialState.getRevision());
 		assertEquals(MemberApprovalStatus.APPROVED, initialState.getApprovalStatuses().get(7L));
 

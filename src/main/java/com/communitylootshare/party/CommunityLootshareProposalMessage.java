@@ -17,10 +17,12 @@ import net.runelite.client.party.messages.PartyMemberMessage;
 
 public class CommunityLootshareProposalMessage extends PartyMemberMessage
 {
-	public static final int PROTOCOL_VERSION = 1;
+	public static final int PROTOCOL_VERSION = 2;
 
 	private int protocolVersion = PROTOCOL_VERSION;
 	private String proposalId;
+	private long ownerMemberId;
+	private boolean manualGp;
 	private String recipient;
 	private String sourceLabel;
 	private long capturedAtEpochMilli;
@@ -32,11 +34,18 @@ public class CommunityLootshareProposalMessage extends PartyMemberMessage
 
 	public CommunityLootshareProposalMessage(LootProposal proposal)
 	{
+		this(proposal, false);
+	}
+
+	public CommunityLootshareProposalMessage(LootProposal proposal, boolean manualGp)
+	{
 		if (proposal == null)
 		{
 			throw new IllegalArgumentException("Proposal is required");
 		}
 		SharedLootEvent event = proposal.getEvent();
+		this.ownerMemberId = proposal.getOwnerMemberId();
+		this.manualGp = manualGp;
 		this.proposalId = event.getProposalId();
 		this.recipient = event.getRecipient();
 		this.sourceLabel = event.getSourceLabel();
@@ -47,9 +56,9 @@ public class CommunityLootshareProposalMessage extends PartyMemberMessage
 		}
 	}
 
-	public Optional<LootProposal> decode(long partyId)
+	public Optional<DecodedProposal> decodeWithMetadata(long partyId)
 	{
-		if (protocolVersion != PROTOCOL_VERSION || getMemberId() <= 0L || partyId <= 0L
+		if ((protocolVersion != 1 && protocolVersion != PROTOCOL_VERSION) || getMemberId() <= 0L || partyId <= 0L
 			|| items == null || items.isEmpty() || items.size() > SharedLootEvent.MAX_ITEMS)
 		{
 			return Optional.empty();
@@ -65,14 +74,24 @@ public class CommunityLootshareProposalMessage extends PartyMemberMessage
 				}
 				decodedItems.add(new SharedLootItem(item.itemId, item.pricingId, item.quantity, item.unitPrice));
 			}
+			long decodedOwnerMemberId = protocolVersion == 1 ? getMemberId() : ownerMemberId;
+			if (decodedOwnerMemberId <= 0L)
+			{
+				return Optional.empty();
+			}
 			SharedLootEvent event = new SharedLootEvent(proposalId, recipient, sourceLabel,
 				Instant.ofEpochMilli(capturedAtEpochMilli), decodedItems);
-			return Optional.of(LootProposal.pending(partyId, getMemberId(), event));
+			return Optional.of(new DecodedProposal(LootProposal.pending(partyId, decodedOwnerMemberId, event), manualGp));
 		}
 		catch (RuntimeException ignored)
 		{
 			return Optional.empty();
 		}
+	}
+
+	public Optional<LootProposal> decode(long partyId)
+	{
+		return decodeWithMetadata(partyId).map(DecodedProposal::getProposal);
 	}
 
 	public int getProtocolVersion()
@@ -83,6 +102,16 @@ public class CommunityLootshareProposalMessage extends PartyMemberMessage
 	public String getProposalId()
 	{
 		return proposalId;
+	}
+
+	public long getOwnerMemberId()
+	{
+		return ownerMemberId;
+	}
+
+	public boolean isManualGp()
+	{
+		return manualGp;
 	}
 
 	public List<ItemPayload> getItems()
@@ -127,6 +156,28 @@ public class CommunityLootshareProposalMessage extends PartyMemberMessage
 		public long getUnitPrice()
 		{
 			return unitPrice;
+		}
+	}
+
+	public static final class DecodedProposal
+	{
+		private final LootProposal proposal;
+		private final boolean manualGp;
+
+		private DecodedProposal(LootProposal proposal, boolean manualGp)
+		{
+			this.proposal = proposal;
+			this.manualGp = manualGp;
+		}
+
+		public LootProposal getProposal()
+		{
+			return proposal;
+		}
+
+		public boolean isManualGp()
+		{
+			return manualGp;
 		}
 	}
 }

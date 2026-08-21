@@ -89,6 +89,7 @@ public class CommunityLootsharePanel extends PluginPanel
 	private boolean inParty;
 	private boolean debugSimulation;
 	private boolean localHost;
+	private boolean memberManualGpAllowed;
 	private boolean hostedSettingsExpanded;
 	private boolean settlementExpanded;
 	private boolean settlementAutoOpened;
@@ -385,6 +386,8 @@ public class CommunityLootsharePanel extends PluginPanel
 	private void renderHostedSettings(HostedSettings hostedSettings)
 	{
 		boolean visible = inParty && !debugSimulation;
+		memberManualGpAllowed = hostedSettings.isAvailable()
+			&& hostedSettings.getSettings().isAllowMemberManualGp();
 		hostedSettingsSection.setVisible(visible);
 		if (!visible)
 		{
@@ -417,6 +420,8 @@ public class CommunityLootsharePanel extends PluginPanel
 			hostedSettingsBody.add(settingRow("Other loot", included(settings.isCaptureUnknownLoot())));
 			hostedSettingsBody.add(settingRow("Logged-out members",
 				included(settings.isIncludeLoggedOutMembers())));
+			hostedSettingsBody.add(settingRow("Member manual GP",
+				included(settings.isAllowMemberManualGp())));
 		}
 		hostedSettingsBody.setVisible(hostedSettingsExpanded);
 		updateHostedSettingsToggleText();
@@ -609,6 +614,7 @@ public class CommunityLootsharePanel extends PluginPanel
 		private JButton transferHostButton;
 		private JLabel approvalStatusLabel;
 		private JButton approvalActionButton;
+		private JButton manualGpButton;
 
 		private MemberCard(MemberLoot member, boolean expanded)
 		{
@@ -775,6 +781,17 @@ public class CommunityLootsharePanel extends PluginPanel
 					actions.setMemberApproved(member.getMemberId(), approve));
 				status.add(approvalActionButton);
 			}
+			if (member.getApprovalStatus() == MemberApprovalStatus.APPROVED
+				&& (localHost || (member.isLocal() && memberManualGpAllowed)))
+			{
+				manualGpButton = new JButton("Add GP");
+				manualGpButton.setFont(FontManager.getRunescapeSmallFont());
+				manualGpButton.setFocusable(false);
+				manualGpButton.setMargin(new Insets(1, 4, 1, 4));
+				manualGpButton.setAlignmentX(RIGHT_ALIGNMENT);
+				manualGpButton.addActionListener(event -> requestManualGp(member));
+				status.add(manualGpButton);
+			}
 			chevron.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
 			chevron.setHorizontalAlignment(SwingConstants.CENTER);
 			chevron.setPreferredSize(new Dimension(14, 34));
@@ -784,6 +801,23 @@ public class CommunityLootsharePanel extends PluginPanel
 			right.add(chevron, BorderLayout.EAST);
 			header.add(right, BorderLayout.EAST);
 			return header;
+		}
+
+		private void requestManualGp(MemberLoot member)
+		{
+			String input = interactions.prompt(CommunityLootsharePanel.this, "Add manual GP",
+				"GP received by " + member.getDisplayName() + ":");
+			Long amount = parseManualGp(input);
+			if (amount == null)
+			{
+				if (input != null)
+				{
+					interactions.showMessage(CommunityLootsharePanel.this,
+						"Enter a positive GP amount (for example 1000000, 1m, or 1.5m).");
+				}
+				return;
+			}
+			actions.addManualGp(member.getMemberId(), amount.longValue());
 		}
 
 		private JPanel buildLootGrid(MemberLoot member)
@@ -875,6 +909,41 @@ public class CommunityLootsharePanel extends PluginPanel
 		JButton getApprovalActionButton()
 		{
 			return approvalActionButton;
+		}
+
+		JButton getManualGpButton()
+		{
+			return manualGpButton;
+		}
+	}
+
+	private static Long parseManualGp(String input)
+	{
+		if (input == null)
+		{
+			return null;
+		}
+		String normalized = input.trim().toLowerCase(Locale.ROOT).replace(",", "");
+		if (normalized.isEmpty())
+		{
+			return null;
+		}
+		long multiplier = 1L;
+		char suffix = normalized.charAt(normalized.length() - 1);
+		if (suffix == 'k' || suffix == 'm' || suffix == 'b')
+		{
+			multiplier = suffix == 'k' ? 1_000L : suffix == 'm' ? 1_000_000L : 1_000_000_000L;
+			normalized = normalized.substring(0, normalized.length() - 1);
+		}
+		try
+		{
+			long value = new java.math.BigDecimal(normalized)
+				.multiply(java.math.BigDecimal.valueOf(multiplier)).longValueExact();
+			return value > 0L && value <= LootshareSettings.MAXIMUM_SHARED_LOOT_VALUE ? value : null;
+		}
+		catch (NumberFormatException | ArithmeticException ignored)
+		{
+			return null;
 		}
 	}
 }

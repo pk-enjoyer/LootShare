@@ -69,6 +69,7 @@ public class CommunityLootshareController
 {
 	private static final int MAX_DEFERRED_ACTIONS = 256;
 	private static final Pattern PICKPOCKET_PATTERN = Pattern.compile("You pick (the )?.+'s? pocket.*");
+	private static final String MANUAL_GP_SOURCE_LABEL = "Manual GP";
 
 	private final Client client;
 	private final ClientThread clientThread;
@@ -300,8 +301,19 @@ public class CommunityLootshareController
 		{
 			return;
 		}
-		Optional<LootProposal> decoded = message.decode(partyService.getPartyId());
-		decoded.ifPresent(proposal -> executeWhenReady(() -> {
+		Optional<CommunityLootshareProposalMessage.DecodedProposal> decoded =
+			message.decodeWithMetadata(partyService.getPartyId());
+		decoded.ifPresent(envelope -> executeWhenReady(() -> {
+			LootProposal proposal = envelope.getProposal();
+			if (proposal.getOwnerMemberId() != message.getMemberId()
+				&& engine.getActiveHostMemberId() != message.getMemberId())
+			{
+				return;
+			}
+			if (envelope.isManualGp() && !isManualGpAllowed(message.getMemberId(), proposal.getOwnerMemberId()))
+			{
+				return;
+			}
 			MutationResult result = engine.addProposal(proposal);
 			boolean decisionsApplied = (result == MutationResult.APPLIED || result == MutationResult.DUPLICATE)
 				&& resolvePendingProposalsAsHost();
@@ -698,6 +710,44 @@ public class CommunityLootshareController
 		return result;
 	}
 
+	/**
+	 * Adds a Party-synchronised manual GP contribution. Hosts may select any approved member;
+	 * guests may select only themselves when the active host policy permits it.
+	 * Must be invoked on the RuneLite client thread by the sidebar controller.
+	 */
+	public MutationResult addManualGp(long memberId, long amount)
+	{
+		if (!isReady() || !partyService.isInParty())
+		{
+			return MutationResult.NO_ACTIVE_SESSION;
+		}
+		if (amount <= 0L || amount > LootshareSettings.MAXIMUM_SHARED_LOOT_VALUE)
+		{
+			return MutationResult.INVALID;
+		}
+		PartyMember local = partyService.getLocalMember();
+		PartyMember target = partyService.getMemberById(memberId);
+		if (local == null || target == null || !isManualGpAllowed(local.getMemberId(), memberId))
+		{
+			return MutationResult.NOT_HOST;
+		}
+		String recipient = displayName(target, null);
+		SharedLootEvent event;
+		try
+		{
+			event = new SharedLootEvent("manual-gp-" + UUID.randomUUID(), recipient, MANUAL_GP_SOURCE_LABEL,
+				Instant.now(), Collections.singletonList(new com.communitylootshare.domain.SharedLootItem(0, 0, 1L, amount)));
+		}
+		catch (RuntimeException e)
+		{
+			return MutationResult.INVALID;
+		}
+		LootProposal proposal = LootProposal.pending(partyService.getPartyId(), memberId, event);
+		recordLocalProposal(proposal, true);
+		return engine.getProposal(proposal.getProposalId()).isPresent()
+			? MutationResult.APPLIED : MutationResult.INVALID;
+	}
+
 	public List<LootshareSession> getHistory()
 	{
 		return isReady() ? engine.getHistory() : Collections.emptyList();
@@ -836,9 +886,22 @@ public class CommunityLootshareController
 		return changed;
 	}
 
+	private boolean isManualGpAllowed(long actingMemberId, long ownerMemberId)
+	{
+		LootshareSettings settings = effectiveHostSettings();
+		if (settings == null || actingMemberId <= 0L || ownerMemberId <= 0L
+			|| partyService.getMemberById(ownerMemberId) == null
+			|| engine.getActiveMemberApprovalStatus(ownerMemberId) != MemberApprovalStatus.APPROVED)
+		{
+			return false;
+		}
+		return actingMemberId == engine.getActiveHostMemberId()
+			|| (actingMemberId == ownerMemberId && settings.isAllowMemberManualGp());
+	}
+
 	private String displayName(PartyMember member, LootProposal proposal)
 	{
-		if (member.getMemberId() == proposal.getOwnerMemberId())
+		if (proposal != null && member.getMemberId() == proposal.getOwnerMemberId())
 		{
 			return proposal.getEvent().getRecipient();
 		}
@@ -983,7 +1046,8 @@ public class CommunityLootshareController
 				? com.communitylootshare.domain.LootValueBasis.GRAND_EXCHANGE
 				: config.lootValueBasis(),
 			config.captureNpcLoot(), config.captureEventLoot(), config.capturePlayerLoot(),
-			config.capturePickpocketLoot(), config.captureUnknownLoot(), config.includeLoggedOutMembers());
+			config.capturePickpocketLoot(), config.captureUnknownLoot(), config.includeLoggedOutMembers(),
+			config.allowMemberManualGp());
 	}
 
 	private long nextHostRevision()
@@ -1000,13 +1064,18 @@ public class CommunityLootshareController
 
 	private void recordLocalProposal(LootProposal proposal)
 	{
+		recordLocalProposal(proposal, false);
+	}
+
+	private void recordLocalProposal(LootProposal proposal, boolean manualGp)
+	{
 		if (!partyService.isInParty() || partyService.getPartyId() != proposal.getPartyId())
 		{
 			return;
 		}
 		if (engine.addProposal(proposal) == MutationResult.APPLIED)
 		{
-			partyService.send(new CommunityLootshareProposalMessage(proposal));
+			partyService.send(new CommunityLootshareProposalMessage(proposal, manualGp));
 			resolvePendingProposalsAsHost();
 			queueCurrentStateForSave();
 			notifyStateChanged();
