@@ -166,19 +166,23 @@ New high-end PvM boss plugins are not accepted as a blanket policy.
 
 ---
 
-# Auto Split Manager Notes
+# Community Lootshare 4.0 Notes
 
 ## Project Overview
 
-This is a RuneLite external plugin named **Auto Split Manager**. It tracks OSRS group loot splits by maintaining a session roster, detecting values from clan/friends chat, attributing loot to players or their mains, and showing settlement guidance in a Swing sidebar panel.
+This is an early RuneLite external plugin foundation named **Community Lootshare**. The currently implemented `com.communitylootshare` code provides a loadable plugin/config boundary plus immutable-valued loot proposal domain objects. RuneLite Party integration, Loot Tracker capture, proposal approval, Community Lootshare UI, and persistence are planned but are not implemented.
 
-The plugin entry point is `com.splitmanager.ManagerPlugin`, declared in `runelite-plugin.properties`.
+The active plugin entry point is `com.communitylootshare.CommunityLootsharePlugin`, declared in `runelite-plugin.properties` and loaded by the development launcher.
+
+The earlier Auto Split Manager implementation remains under `com.communitylootshare` as migration/reference code. It is compiled and tested, but it is not the active Plugin Hub entry point or the plugin loaded by `./gradlew run`. Detailed Auto Split Manager notes below are retained only to support deliberate migration work; do not present them as current Community Lootshare behavior.
 
 ## Build And Test
 
 - `./gradlew test` runs the JUnit 4 test suite.
 - `./gradlew build` compiles and runs tests.
-- `./gradlew shadowJar` builds a runnable RuneLite test jar using `com.splitmanager.PluginTest`.
+- `./gradlew shadowJar` builds a runnable RuneLite development-client jar using `com.communitylootshare.CommunityLootsharePluginTest`.
+- `./gradlew run` loads `CommunityLootsharePlugin` in RuneLite developer/debug mode with assertions enabled.
+- `./gradlew uiPreview` opens only the retained Auto Split Manager stub UI; it is not a Community Lootshare preview.
 - The project targets Java 11 in Gradle, even if local IDE/Qodana uses a newer JDK.
 - On this workstation, use Java 21 for Gradle because Lombok `1.18.30` does not compile under Java 25:
   `env JAVA_HOME=/usr/lib/jvm/java-21-temurin-jdk ./gradlew test`
@@ -198,7 +202,7 @@ Uphold these during normal changes:
 - Use structured serializers/parsers for structured data. Prefer Gson for JSON rather than manual string concatenation.
 - Keep dependencies conservative. Prefer Java/RuneLite APIs for small utilities unless a new dependency clearly reduces risk or complexity.
 
-Work toward these over time:
+If Auto Split Manager code is deliberately migrated, work toward these over time:
 
 - Reduce static mutable state such as global formatter config. Prefer passing configuration/defaults explicitly.
 - Strengthen model encapsulation with private final fields and getters where it does not fight Swing table model usage.
@@ -206,7 +210,16 @@ Work toward these over time:
 - Remove stale commented-out code and keep TODOs specific to a missing behavior or known defect.
 - Keep tests headless-friendly. Avoid direct dependencies on dialogs, clipboard, or live RuneLite client state unless mocked cleanly.
 
-## Main Architecture
+## Active Community Lootshare Architecture
+
+- `CommunityLootsharePlugin` is currently a no-op RuneLite plugin boundary with a config provider.
+- `CommunityLootshareConfig` establishes the stable `community-lootshare` config group but exposes no user-facing settings yet.
+- `SharedLootItem` stores item/pricing IDs, quantity, and a captured unit price, validating quantity, price, and multiplication overflow.
+- `SharedLootEvent` stores proposal metadata and up to 128 loot items, and computes an overflow-checked total.
+
+## Retained Auto Split Manager Architecture (Legacy)
+
+Everything in this section through the legacy persistence, formatting, UI, and split-testing notes describes retained `com.communitylootshare` code. It is migration context, not active Community Lootshare functionality.
 
 - `ManagerPlugin` is the RuneLite plugin boundary. It registers the toolbar panel and overlay, handles RuneLite events, parses chat messages, and adds chat/player context menu entries.
 - `ManagerPanel` is the composition root for the sidebar UI. It creates `PanelController` and `PanelView`, and can rebuild the panel after certain config changes.
@@ -279,6 +292,7 @@ When a config item changes the factual settlement calculation, persist the relev
 
 Existing tests cover:
 
+- initial Community Lootshare proposal/item domain behavior in `SharedLootEventTest`
 - session lifecycle and split math in `ManagerSessionTest`
 - alt/main behavior in `ManagerKnownPlayersTest`
 - direct settlement routing in `PaymentProcessorTest`
@@ -309,17 +323,18 @@ Use `src/test/java` for automated unit tests and keep the full RuneLite client l
 
 RuneLite-specific testing layers:
 
-- **Domain unit tests:** `ManagerSession`, `ManagerKnownPlayers`, `Formats`, `PaymentProcessor`, and `MarkdownFormatter`. These should be the default for most changes.
-- **Boundary unit tests:** `ManagerPlugin` event handlers with mocked config/session/panel dependencies and synthetic RuneLite events.
-- **View/model tests:** Swing table models and formatting behavior without starting the RuneLite client.
-- **Manual smoke test:** `com.splitmanager.PluginTest` loads `ManagerPlugin` via `ExternalPluginManager.loadBuiltin(...)` and launches RuneLite. Treat this as a manual development-client path, not an automated unit test.
+- **Community Lootshare domain tests:** `SharedLootEventTest` covers the currently implemented v4 domain foundation.
+- **Legacy domain unit tests:** `ManagerSession`, `ManagerKnownPlayers`, `Formats`, `PaymentProcessor`, and `MarkdownFormatter` remain useful when evaluating migration candidates.
+- **Legacy boundary unit tests:** `ManagerPlugin` event handlers use mocked config/session/panel dependencies and synthetic RuneLite events.
+- **Legacy view/model tests:** Swing table models and formatting behavior run without starting the RuneLite client.
+- **Manual smoke test:** `com.communitylootshare.CommunityLootsharePluginTest` loads `CommunityLootsharePlugin` via `ExternalPluginManager.loadBuiltin(...)` and launches RuneLite. Treat this as a manual development-client path, not an automated unit test.
 
 Best setup for this RuneLite external plugin:
 
 - Keep `testImplementation 'junit:junit:4.12'`, Mockito, `net.runelite:client`, and `net.runelite:jshell`.
 - Keep automated verification on `./gradlew test`.
-- The `run` Gradle task uses `sourceSets.test.runtimeClasspath`, `com.splitmanager.PluginTest`, and passes `--developer-mode`/`--debug`.
-- Run tests with a Java 11 JDK. A JRE-only install is not enough because Gradle needs `javac`.
+- The `run` Gradle task launches `com.communitylootshare.CommunityLootsharePluginTest`, enables assertions, and passes `--developer-mode`/`--debug`.
+- Production sources compile to Java 11 bytecode. On this workstation, invoke Gradle with the documented Java 21 JDK; a JRE-only install is not enough because Gradle needs `javac`.
 
 Research references:
 

@@ -7,7 +7,10 @@ import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 
 /** Community Lootshare entry point. Party and Loot Tracker integration is staged behind this boundary. */
-@PluginDescriptor(name = "Community Lootshare", description = "Shared loot tracking for RuneLite Party groups")
+@PluginDescriptor(
+	name = "Community Lootshare",
+	description = "Early foundation for owner-approved, party-shared loot tracking with immutable item price snapshots"
+)
 public class CommunityLootsharePlugin extends Plugin
 {
 	@Inject

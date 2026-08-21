@@ -49,23 +49,23 @@ jacoco {
 }
 
 def jacocoUnitTestExcludes = [
-	'com/splitmanager/ManagerPlugin*',
-	'com/splitmanager/ManagerPanel*',
-	'com/splitmanager/PluginConfig*',
-	'com/splitmanager/controllers/**',
-	'com/splitmanager/models/SplitEvent*',
-	'com/splitmanager/models/PendingValue*',
-	'com/splitmanager/models/PlayerMetrics*',
-	'com/splitmanager/models/Transfer*',
-	'com/splitmanager/ui/**',
-	'com/splitmanager/utils/ChatStatusOverlay*',
-	'com/splitmanager/views/**'
+	'com/communitylootshare/ManagerPlugin*',
+	'com/communitylootshare/ManagerPanel*',
+	'com/communitylootshare/PluginConfig*',
+	'com/communitylootshare/controllers/**',
+	'com/communitylootshare/models/SplitEvent*',
+	'com/communitylootshare/models/PendingValue*',
+	'com/communitylootshare/models/PlayerMetrics*',
+	'com/communitylootshare/models/Transfer*',
+	'com/communitylootshare/ui/**',
+	'com/communitylootshare/utils/ChatStatusOverlay*',
+	'com/communitylootshare/views/**'
 ]
 
 def jacocoUiCoverageIncludes = [
-	'com/splitmanager/controllers/PanelController*',
-	'com/splitmanager/views/HistoryTableModel*',
-	'com/splitmanager/views/HistoryEditorPanel*'
+	'com/communitylootshare/controllers/PanelController*',
+	'com/communitylootshare/views/HistoryTableModel*',
+	'com/communitylootshare/views/HistoryEditorPanel*'
 ]
 
 test {
@@ -169,7 +169,7 @@ tasks.register('patchedRuneliteClientJar', Jar) {
 
 tasks.register('run', JavaExec) {
 	group = 'runelite'
-	description = 'Run RuneLite with Auto Split Manager loaded in developer mode.'
+	description = 'Run RuneLite with the Community Lootshare foundation loaded in developer mode.'
 	dependsOn tasks.named('patchedRuneliteClientJar')
 	classpath = files(
 		sourceSets.test.output,
@@ -177,23 +177,24 @@ tasks.register('run', JavaExec) {
 		tasks.named('patchedRuneliteClientJar'),
 		configurations.testRuntimeClasspath.filter { file -> !isRuneLiteClientJar(file) }
 	)
-	mainClass.set('com.splitmanager.PluginTest')
+	mainClass.set('com.communitylootshare.CommunityLootsharePluginTest')
+	jvmArgs '-ea'
 	args '--developer-mode', '--debug'
 }
 
 tasks.register('uiPreview', JavaExec) {
 	group = 'verification'
-	description = 'Open the Auto Split Manager Swing UI with local stub data and no RuneLite client.'
+	description = 'Open the retained Auto Split Manager migration UI with stub data; this is not Community Lootshare.'
 	dependsOn tasks.named('testClasses')
 	classpath = sourceSets.test.runtimeClasspath
-	mainClass.set('com.splitmanager.views.UiPreview')
+	mainClass.set('com.communitylootshare.views.UiPreview')
 	jvmArgs '-Djava.awt.headless=false'
 }
 
 tasks.register('shadowJar', Jar) {
 	dependsOn configurations.testRuntimeClasspath
 	manifest {
-		attributes('Main-Class': 'com.splitmanager.PluginTest', 'Multi-Release': true)
+		attributes('Main-Class': 'com.communitylootshare.CommunityLootsharePluginTest', 'Multi-Release': true)
 	}
 
 	duplicatesStrategy = DuplicatesStrategy.EXCLUDE
@@ -212,6 +213,7 @@ tasks.register('shadowJar', Jar) {
 	exclude '**/module-info.class'
 
 	group = BasePlugin.BUILD_GROUP
+	description = 'Build a runnable Community Lootshare development-client jar.'
 	archiveClassifier.set('shadow')
 	archiveFileName.set("${rootProject.name}-${project.version}-all.jar")
 }

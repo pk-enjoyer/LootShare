@@ -1,0 +1,19 @@
+# Gradle state and build outputs
+.gradle/
+build/
+out/
+*.class
+
+# IDE metadata
+.idea/
+*.iml
+.classpath
+.project
+.settings/
+.vscode/
+
+# Local operating-system and JVM files
+.DS_Store
+Thumbs.db
+hs_err_pid*.log
+replay_pid*.log
