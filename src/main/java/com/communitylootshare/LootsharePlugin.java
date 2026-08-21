@@ -13,6 +13,7 @@ import java.awt.image.BufferedImage;
 import javax.inject.Inject;
 import javax.swing.SwingUtilities;
 import net.runelite.api.events.ChatMessage;
+import net.runelite.api.events.GameTick;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
@@ -221,6 +222,12 @@ public class LootsharePlugin extends Plugin
 	public void onGameStateChanged(GameStateChanged event)
 	{
 		controller.onGameStateChanged(event);
+	}
+
+	@Subscribe
+	public void onGameTick(GameTick event)
+	{
+		controller.onGameTick();
 	}
 
 	@Subscribe

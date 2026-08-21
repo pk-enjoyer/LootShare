@@ -96,6 +96,7 @@ public class LootshareController
 	private boolean ready;
 	private boolean persistenceWritable;
 	private boolean hostSettingsSynchronized;
+	private boolean identityAnnouncementPending;
 	private int loadGeneration;
 	private int ignoreServerNpcLootTick = Integer.MIN_VALUE;
 	private File activeFile;
@@ -162,6 +163,7 @@ public class LootshareController
 			started = false;
 			ready = false;
 			hostSettingsSynchronized = false;
+			identityAnnouncementPending = false;
 			loadGeneration++;
 			deferredActions.clear();
 			ignoreServerNpcLootTick = Integer.MIN_VALUE;
@@ -370,9 +372,24 @@ public class LootshareController
 
 	public void onGameStateChanged(GameStateChanged event)
 	{
-		if (event != null && event.getGameState() == GameState.LOGGED_IN)
+		if (event == null)
 		{
-			executeWhenReady(this::announceLocalIdentity);
+			return;
+		}
+		if (event.getGameState() != GameState.LOGGED_IN)
+		{
+			identityAnnouncementPending = false;
+			return;
+		}
+		identityAnnouncementPending = true;
+		executeWhenReady(this::announceLocalIdentityWhenAvailable);
+	}
+
+	public void onGameTick()
+	{
+		if (identityAnnouncementPending)
+		{
+			executeWhenReady(this::announceLocalIdentityWhenAvailable);
 		}
 	}
 
@@ -785,21 +802,36 @@ public class LootshareController
 		return Optional.ofNullable(displayName(member, null));
 	}
 
-	private void announceLocalIdentity()
+	private void announceLocalIdentityWhenAvailable()
 	{
 		if (!partyService.isInParty())
 		{
+			identityAnnouncementPending = false;
 			return;
+		}
+		if (announceLocalIdentity())
+		{
+			identityAnnouncementPending = false;
+			notifyStateChanged();
+		}
+	}
+
+	private boolean announceLocalIdentity()
+	{
+		if (!partyService.isInParty())
+		{
+			return false;
 		}
 		PartyMember local = partyService.getLocalMember();
 		Player player = client.getLocalPlayer();
 		String name = player == null ? null : normalizedMemberName(player.getName());
 		if (local == null || name == null)
 		{
-			return;
+			return false;
 		}
 		rememberMemberName(local.getMemberId(), name);
 		partyService.send(new MemberIdentityMessage(name));
+		return true;
 	}
 
 	private void rememberParticipantNames(Collection<LootshareParticipant> participants)
