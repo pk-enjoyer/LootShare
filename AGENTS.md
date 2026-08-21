@@ -170,7 +170,7 @@ New high-end PvM boss plugins are not accepted as a blanket policy.
 
 ## Project Overview
 
-This is an early RuneLite external plugin foundation named **Community Lootshare**. The currently implemented `com.communitylootshare` code provides a loadable plugin/config boundary plus immutable-valued loot proposal domain objects. RuneLite Party integration, Loot Tracker capture, proposal approval, Community Lootshare UI, and persistence are planned but are not implemented.
+This is a RuneLite external plugin backend named **Community Lootshare**. The active `com.communitylootshare` code captures RuneLite loot events, exchanges owner-authorized proposals over RuneLite Party, persists profile-scoped sessions, and computes exact splits and settlement transfers. A Community Lootshare view layer is still planned, so owners cannot yet approve or reject proposals through the RuneLite interface.
 
 The active plugin entry point is `com.communitylootshare.CommunityLootsharePlugin`, declared in `runelite-plugin.properties` and loaded by the development launcher.
 
@@ -202,6 +202,12 @@ Uphold these during normal changes:
 - Use structured serializers/parsers for structured data. Prefer Gson for JSON rather than manual string concatenation.
 - Keep dependencies conservative. Prefer Java/RuneLite APIs for small utilities unless a new dependency clearly reduces risk or complexity.
 
+## Java Source Licensing
+
+- Every newly created Java source or test file must begin with the project BSD-2 notice:
+  `Copyright (c) 2025, pk-enjoyer` and `SPDX-License-Identifier: BSD-2-Clause`.
+- Do not add or remove headers from pre-existing Java files solely for formatting consistency.
+
 If Auto Split Manager code is deliberately migrated, work toward these over time:
 
 - Reduce static mutable state such as global formatter config. Prefer passing configuration/defaults explicitly.
@@ -212,10 +218,18 @@ If Auto Split Manager code is deliberately migrated, work toward these over time
 
 ## Active Community Lootshare Architecture
 
-- `CommunityLootsharePlugin` is currently a no-op RuneLite plugin boundary with a config provider.
-- `CommunityLootshareConfig` establishes the stable `community-lootshare` config group but exposes no user-facing settings yet.
-- `SharedLootItem` stores item/pricing IDs, quantity, and a captured unit price, validating quantity, price, and multiplication overflow.
-- `SharedLootEvent` stores proposal metadata and up to 128 loot items, and computes an overflow-checked total.
+- `CommunityLootsharePlugin` registers the custom Party protocol, delegates RuneLite events to `CommunityLootshareController`, and unregisters its messages on shutdown.
+- `CommunityLootshareConfig` establishes the stable `community-lootshare` config group and the current fixed 100,000-coin capture threshold, but exposes no user-facing settings yet.
+- `LootCaptureService` converts `LootReceived` stacks into canonical, immutable price snapshots and suppresses identical captures from the same game tick.
+- `SharedLootItem` stores item/pricing IDs, quantity, and a captured unit price, validating IDs, quantity, price, and multiplication overflow.
+- `SharedLootEvent` stores bounded proposal metadata, a capture timestamp, and up to 128 item records, and computes an overflow-checked total.
+- `LootProposal` enforces pending/final state, authoritative owner identity, owner inclusion in accepted rosters, and decision chronology.
+- `CommunityLootshareEngine` owns bounded proposal and Party-session state, owner-only decisions, duplicate/conflict handling, snapshot/restore, and history.
+- `CommunityLootshareProposalMessage` and `CommunityLootshareDecisionMessage` define the bounded version-1 RuneLite Party protocol. The receiving `PartyMemberMessage.memberId` is authoritative; sender IDs are not serialized in the plugin payload.
+- `CommunityLootshareController` coordinates asynchronous profile loading/saving, Party lifecycle and late-join sync, local capture, remote validation, future UI decisions, and calculation/history queries.
+- `CommunityLootshareStorage` writes schema-versioned profile files beneath `RuneLite.RUNELITE_DIR/community-lootshare` through an atomic temporary-file replacement. Malformed, oversized, or future-schema files become read-only instead of being overwritten.
+- `LootshareCalculator` freezes entitlement per accepted proposal roster, assigns indivisible-coin remainders deterministically by Party member ID, and emits zero-sum balances plus direct settlement transfers.
+- No Community Lootshare sidebar, overlay, notification, approval control, or user-facing setting is implemented yet. Do not present the backend as a user-complete workflow.
 
 ## Retained Auto Split Manager Architecture (Legacy)
 
@@ -323,7 +337,7 @@ Use `src/test/java` for automated unit tests and keep the full RuneLite client l
 
 RuneLite-specific testing layers:
 
-- **Community Lootshare domain tests:** `SharedLootEventTest` covers the currently implemented v4 domain foundation.
+- **Community Lootshare backend tests:** focused tests cover immutable event/proposal/session validation, capture/deduplication, Party payload decoding, state lifecycle, split/settlement math, atomic persistence, and the active controller boundary.
 - **Legacy domain unit tests:** `ManagerSession`, `ManagerKnownPlayers`, `Formats`, `PaymentProcessor`, and `MarkdownFormatter` remain useful when evaluating migration candidates.
 - **Legacy boundary unit tests:** `ManagerPlugin` event handlers use mocked config/session/panel dependencies and synthetic RuneLite events.
 - **Legacy view/model tests:** Swing table models and formatting behavior run without starting the RuneLite client.

@@ -49,10 +49,12 @@ jacoco {
 }
 
 def jacocoUnitTestExcludes = [
+	'com/communitylootshare/CommunityLootsharePlugin*',
 	'com/communitylootshare/ManagerPlugin*',
 	'com/communitylootshare/ManagerPanel*',
 	'com/communitylootshare/PluginConfig*',
 	'com/communitylootshare/controllers/**',
+	'com/communitylootshare/integration/**',
 	'com/communitylootshare/models/SplitEvent*',
 	'com/communitylootshare/models/PendingValue*',
 	'com/communitylootshare/models/PlayerMetrics*',
@@ -169,7 +171,7 @@ tasks.register('patchedRuneliteClientJar', Jar) {
 
 tasks.register('run', JavaExec) {
 	group = 'runelite'
-	description = 'Run RuneLite with the Community Lootshare foundation loaded in developer mode.'
+	description = 'Run RuneLite with the Community Lootshare backend loaded in developer mode.'
 	dependsOn tasks.named('patchedRuneliteClientJar')
 	classpath = files(
 		sourceSets.test.output,

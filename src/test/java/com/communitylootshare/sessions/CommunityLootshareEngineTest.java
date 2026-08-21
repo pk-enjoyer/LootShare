@@ -1,0 +1,203 @@
+/*
+ * Copyright (c) 2025, pk-enjoyer
+ * SPDX-License-Identifier: BSD-2-Clause
+ */
+
+package com.communitylootshare.sessions;
+
+import com.communitylootshare.domain.CommunityLootshareState;
+import com.communitylootshare.domain.LootProposal;
+import com.communitylootshare.domain.LootProposalStatus;
+import com.communitylootshare.domain.LootshareParticipant;
+import com.communitylootshare.domain.LootshareSession;
+import com.communitylootshare.domain.SharedLootEvent;
+import com.communitylootshare.domain.SharedLootItem;
+import com.communitylootshare.sessions.CommunityLootshareEngine.DecisionOutcome;
+import com.communitylootshare.sessions.CommunityLootshareEngine.MutationResult;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
+import org.junit.Test;
+
+public class CommunityLootshareEngineTest
+{
+	@Test
+	public void enforcesOwnerApprovalDeduplicationAndFinalDecisionConflicts()
+	{
+		CommunityLootshareEngine engine = new CommunityLootshareEngine();
+		assertEquals(0L, engine.getActivePartyId());
+		assertEquals(MutationResult.NO_ACTIVE_SESSION, engine.addProposal(pending("p1", 10L, 1L, 100L)));
+		assertEquals(MutationResult.INVALID, engine.addProposal(null));
+		assertEquals(MutationResult.APPLIED, engine.enterParty(10L, "s1", Instant.EPOCH));
+		assertEquals(MutationResult.DUPLICATE, engine.enterParty(10L, "ignored", Instant.ofEpochSecond(1)));
+		assertEquals(10L, engine.getActivePartyId());
+
+		LootProposal proposal = pending("p1", 10L, 1L, 100L);
+		assertEquals(MutationResult.APPLIED, engine.addProposal(proposal));
+		assertEquals(MutationResult.DUPLICATE, engine.addProposal(proposal));
+		assertEquals(MutationResult.CONFLICT, engine.addProposal(pending("p1", 10L, 1L, 101L)));
+		assertEquals(1, engine.getPendingOwnedBy(1L).size());
+		assertTrue(engine.getPendingOwnedBy(2L).isEmpty());
+		assertEquals(1, engine.getProposalsForActiveParty().size());
+
+		DecisionOutcome missing = engine.decide("missing", 1L, LootProposalStatus.ACCEPTED, Instant.EPOCH,
+			roster(1L, 2L));
+		assertEquals(MutationResult.NOT_FOUND, missing.getResult());
+		assertEquals(null, missing.getProposal());
+		assertEquals(MutationResult.NOT_OWNER,
+			engine.decide("p1", 2L, LootProposalStatus.ACCEPTED, Instant.EPOCH, roster(1L, 2L)).getResult());
+		assertEquals(MutationResult.INVALID,
+			engine.decide("p1", 1L, LootProposalStatus.PENDING, Instant.EPOCH, roster(1L, 2L)).getResult());
+
+		DecisionOutcome accepted = engine.decide("p1", 1L, LootProposalStatus.ACCEPTED,
+			Instant.ofEpochSecond(2), roster(2L, 1L));
+		assertEquals(MutationResult.APPLIED, accepted.getResult());
+		assertEquals(LootProposalStatus.ACCEPTED, accepted.getProposal().getStatus());
+		assertTrue(engine.getPendingOwnedBy(1L).isEmpty());
+		assertEquals(1, engine.getActiveSession().get().getAcceptedProposals().size());
+		assertEquals(MutationResult.DUPLICATE,
+			engine.decide("p1", 1L, LootProposalStatus.ACCEPTED, Instant.ofEpochSecond(3), roster(1L, 2L)).getResult());
+		assertEquals(MutationResult.CONFLICT,
+			engine.decide("p1", 1L, LootProposalStatus.REJECTED, Instant.ofEpochSecond(3), Collections.emptyList()).getResult());
+
+		LootProposal alreadyAccepted = pending("p2", 10L, 1L, 20L).decide(LootProposalStatus.ACCEPTED,
+			Instant.ofEpochSecond(4), roster(1L));
+		assertEquals(MutationResult.INVALID, engine.addProposal(alreadyAccepted));
+	}
+
+	@Test
+	public void rejectsAndPersistsProposalsWhileSessionsFollowPartyLifecycle()
+	{
+		CommunityLootshareEngine engine = new CommunityLootshareEngine();
+		assertEquals(MutationResult.DUPLICATE, engine.leaveParty(Instant.EPOCH));
+		assertEquals(MutationResult.APPLIED, engine.enterParty(10L, "first", Instant.EPOCH));
+		assertEquals(MutationResult.APPLIED, engine.addProposal(pending("reject", 10L, 1L, 50L)));
+		assertEquals(MutationResult.APPLIED,
+			engine.decide("reject", 1L, LootProposalStatus.REJECTED, Instant.ofEpochSecond(1), null).getResult());
+		assertEquals(LootProposalStatus.REJECTED, engine.getProposal("reject").get().getStatus());
+		assertEquals(MutationResult.APPLIED, engine.addProposal(pending("pending", 10L, 1L, 60L)));
+
+		assertEquals(MutationResult.APPLIED, engine.enterParty(20L, "second", Instant.ofEpochSecond(2)));
+		assertEquals(20L, engine.getActivePartyId());
+		assertEquals(2, engine.getHistory().size());
+		assertFalse(engine.getHistory().get(0).isActive());
+		assertTrue(engine.getHistory().get(1).isActive());
+		assertEquals(MutationResult.NO_ACTIVE_SESSION,
+			engine.decide("pending", 1L, LootProposalStatus.REJECTED, Instant.ofEpochSecond(3), null).getResult());
+		assertEquals(MutationResult.APPLIED, engine.leaveParty(Instant.ofEpochSecond(4)));
+		assertFalse(engine.getActiveSession().isPresent());
+		assertEquals(0L, engine.getActivePartyId());
+		assertTrue(engine.getProposalsForActiveParty().isEmpty());
+		assertTrue(engine.getPendingOwnedBy(1L).isEmpty());
+	}
+
+	@Test
+	public void invalidSessionTimesDoNotCorruptTheActiveSession()
+	{
+		CommunityLootshareEngine engine = new CommunityLootshareEngine();
+		assertEquals(MutationResult.INVALID, engine.enterParty(0L, "session", Instant.EPOCH));
+		assertEquals(MutationResult.INVALID, engine.enterParty(1L, null, Instant.EPOCH));
+		assertEquals(MutationResult.INVALID, engine.enterParty(1L, "session", null));
+		assertEquals(MutationResult.APPLIED,
+			engine.enterParty(1L, "session", Instant.ofEpochSecond(5)));
+		assertEquals(MutationResult.INVALID, engine.leaveParty(Instant.ofEpochSecond(4)));
+		assertEquals(1L, engine.getActivePartyId());
+		assertEquals(MutationResult.INVALID,
+			engine.enterParty(2L, "replacement", Instant.ofEpochSecond(4)));
+		assertEquals(1L, engine.getActivePartyId());
+		assertEquals(MutationResult.APPLIED, engine.leaveParty(Instant.ofEpochSecond(6)));
+	}
+
+	@Test
+	public void snapshotRestorePreservesValidatedActiveStateAndHandlesNullCollections()
+	{
+		CommunityLootshareEngine source = new CommunityLootshareEngine();
+		source.enterParty(10L, "s", Instant.EPOCH);
+		source.addProposal(pending("p", 10L, 1L, 100L));
+		source.decide("p", 1L, LootProposalStatus.ACCEPTED, Instant.ofEpochSecond(1), roster(1L, 2L));
+
+		CommunityLootshareState snapshot = source.snapshot();
+		assertEquals(CommunityLootshareState.CURRENT_SCHEMA_VERSION, snapshot.getSchemaVersion());
+		assertEquals("s", snapshot.getActiveSessionId());
+		assertEquals(1, snapshot.getProposals().size());
+		assertEquals(1, snapshot.getSessions().size());
+
+		CommunityLootshareEngine restored = new CommunityLootshareEngine();
+		restored.restore(snapshot);
+		assertEquals(10L, restored.getActivePartyId());
+		assertEquals(LootProposalStatus.ACCEPTED, restored.getProposal("p").get().getStatus());
+		assertEquals(1, restored.getActiveSession().get().getAcceptedProposals().size());
+
+		CommunityLootshareState malformed = new CommunityLootshareState();
+		malformed.setSchemaVersion(7);
+		malformed.setProposals(Arrays.asList(null, pending("valid", 10L, 1L, 1L)));
+		malformed.setSessions(Arrays.asList(null, new LootshareSession("valid-session", 10L, Instant.EPOCH)));
+		malformed.setActiveSessionId("valid-session");
+		restored.restore(malformed);
+		assertTrue(restored.getProposal("valid").isPresent());
+		assertTrue(restored.getActiveSession().isPresent());
+
+		malformed.setProposals(null);
+		malformed.setSessions(null);
+		assertTrue(malformed.getProposals().isEmpty());
+		assertTrue(malformed.getSessions().isEmpty());
+		restored.restore(null);
+		assertTrue(restored.getHistory().isEmpty());
+	}
+
+	@Test
+	public void proposalAndSessionLimitsAreBounded()
+	{
+		CommunityLootshareEngine engine = new CommunityLootshareEngine();
+		engine.enterParty(10L, "s", Instant.EPOCH);
+		for (int index = 0; index < CommunityLootshareEngine.MAX_PROPOSALS; index++)
+		{
+			assertEquals(MutationResult.APPLIED,
+				engine.addProposal(pending("p" + index, 10L, 1L, 1L)));
+		}
+		assertEquals(MutationResult.LIMIT_REACHED,
+			engine.addProposal(pending("overflow", 10L, 1L, 1L)));
+
+		CommunityLootshareState allActive = new CommunityLootshareState();
+		List<LootshareSession> sessions = new ArrayList<>();
+		for (int index = 0; index < CommunityLootshareEngine.MAX_SESSIONS; index++)
+		{
+			sessions.add(new LootshareSession("s" + index, index + 1L, Instant.EPOCH));
+		}
+		allActive.setSessions(sessions);
+		engine.restore(allActive);
+		assertEquals(MutationResult.LIMIT_REACHED,
+			engine.enterParty(999L, "new", Instant.ofEpochSecond(1)));
+
+		CommunityLootshareEngine pruning = new CommunityLootshareEngine();
+		for (int index = 0; index < CommunityLootshareEngine.MAX_SESSIONS; index++)
+		{
+			pruning.enterParty(index + 1L, "s" + index, Instant.ofEpochSecond(index));
+		}
+		assertEquals(MutationResult.APPLIED,
+			pruning.enterParty(999L, "replacement", Instant.ofEpochSecond(999)));
+		assertEquals(CommunityLootshareEngine.MAX_SESSIONS, pruning.getHistory().size());
+	}
+
+	private static LootProposal pending(String id, long partyId, long ownerId, long value)
+	{
+		return LootProposal.pending(partyId, ownerId,
+			new SharedLootEvent(id, ownerId == 1L ? "Alice" : "Owner", "Boss", Instant.EPOCH,
+				Collections.singletonList(new SharedLootItem(1, 1, 1, value))));
+	}
+
+	private static List<LootshareParticipant> roster(long... memberIds)
+	{
+		List<LootshareParticipant> participants = new ArrayList<>();
+		for (long memberId : memberIds)
+		{
+			participants.add(new LootshareParticipant(memberId, memberId == 1L ? "Alice" : "Member " + memberId));
+		}
+		return participants;
+	}
+}
