@@ -32,6 +32,13 @@ public class MemberIdentityMessage extends PartyMemberMessage
 		this.displayName = displayName.trim();
 	}
 
+	private static boolean isValidDisplayName(String value)
+	{
+		return value != null && !value.trim().isEmpty()
+			&& !"<unknown>".equalsIgnoreCase(value.trim())
+			&& value.trim().length() <= SharedLootEvent.MAX_RECIPIENT_LENGTH;
+	}
+
 	public Optional<String> decode()
 	{
 		if (protocolVersion != PROTOCOL_VERSION || getMemberId() <= 0L || !isValidDisplayName(displayName))
@@ -49,12 +56,5 @@ public class MemberIdentityMessage extends PartyMemberMessage
 	public String getDisplayName()
 	{
 		return displayName;
-	}
-
-	private static boolean isValidDisplayName(String value)
-	{
-		return value != null && !value.trim().isEmpty()
-			&& !"<unknown>".equalsIgnoreCase(value.trim())
-			&& value.trim().length() <= SharedLootEvent.MAX_RECIPIENT_LENGTH;
 	}
 }

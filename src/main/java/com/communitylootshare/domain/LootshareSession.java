@@ -9,7 +9,9 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-/** The single active Party ledger. Accepted proposals retain their frozen roster. */
+/**
+ * The single active Party ledger. Accepted proposals retain their frozen roster.
+ */
 public final class LootshareSession
 {
 	public static final int MAX_ACCEPTED_PROPOSALS = 4096;
@@ -27,37 +29,105 @@ public final class LootshareSession
 		{
 			throw new IllegalArgumentException("Session party, ID, and start time are required");
 		}
-		this.sessionId = sessionId.trim(); this.partyId = partyId; this.startedAt = startedAt;
+		this.sessionId = sessionId.trim();
+		this.partyId = partyId;
+		this.startedAt = startedAt;
 	}
+
 	public boolean addAcceptedProposal(LootProposal proposal)
 	{
-		if (proposal == null || proposal.getStatus() != LootProposalStatus.ACCEPTED || proposal.getPartyId() != partyId) throw new IllegalArgumentException("Accepted proposal must belong to this Party");
-		for (LootProposal existing : acceptedProposals) if (existing.getProposalId().equals(proposal.getProposalId())) return false;
-		if (acceptedProposals.size() >= MAX_ACCEPTED_PROPOSALS) throw new IllegalStateException("Accepted proposal limit reached");
+		if (proposal == null || proposal.getStatus() != LootProposalStatus.ACCEPTED || proposal.getPartyId() != partyId)
+		{
+			throw new IllegalArgumentException("Accepted proposal must belong to this Party");
+		}
+		for (LootProposal existing : acceptedProposals)
+		{
+			if (existing.getProposalId().equals(proposal.getProposalId()))
+			{
+				return false;
+			}
+		}
+		if (acceptedProposals.size() >= MAX_ACCEPTED_PROPOSALS)
+		{
+			throw new IllegalStateException("Accepted proposal limit reached");
+		}
 		acceptedProposals.add(proposal.validatedCopy());
-		acceptedProposals.sort((a, b) -> { int c = a.getDecidedAt().compareTo(b.getDecidedAt()); return c != 0 ? c : a.getProposalId().compareTo(b.getProposalId()); });
+		acceptedProposals.sort((a, b) -> {
+			int c = a.getDecidedAt().compareTo(b.getDecidedAt());
+			return c != 0 ? c : a.getProposalId().compareTo(b.getProposalId());
+		});
 		return true;
 	}
+
 	public LootshareSession snapshot()
 	{
 		LootshareSession copy = new LootshareSession(sessionId, partyId, startedAt);
 		copy.setHostState(hostMemberId, minimumSharedLootValue, hostRevision);
-		for (LootProposal proposal : acceptedProposals) copy.addAcceptedProposal(proposal);
+		for (LootProposal proposal : acceptedProposals)
+		{
+			copy.addAcceptedProposal(proposal);
+		}
 		return copy;
 	}
+
 	public void setHostState(long memberId, long minimum, long revision)
 	{
-		if (memberId < 0L || minimum < 0L || minimum > LootshareSettings.MAXIMUM_SHARED_LOOT_VALUE || revision < 0L || (memberId > 0L && revision == 0L)) throw new IllegalArgumentException("Invalid host state");
-		hostMemberId = memberId; minimumSharedLootValue = minimum; hostRevision = revision;
+		if (memberId < 0L || minimum < 0L || minimum > LootshareSettings.MAXIMUM_SHARED_LOOT_VALUE || revision < 0L || (memberId > 0L && revision == 0L))
+		{
+			throw new IllegalArgumentException("Invalid host state");
+		}
+		hostMemberId = memberId;
+		minimumSharedLootValue = minimum;
+		hostRevision = revision;
 	}
-	public void clearHost() { hostMemberId = 0L; }
-	public String getSessionId() { return sessionId; }
-	public long getPartyId() { return partyId; }
-	public Instant getStartedAt() { return startedAt; }
-	public boolean isActive() { return true; }
-	public long getHostMemberId() { return hostMemberId; }
-	public long getMinimumSharedLootValue() { return minimumSharedLootValue; }
-	public LootshareSettings getHostSettings() { return LootshareSettings.defaults(minimumSharedLootValue); }
-	public long getHostRevision() { return hostRevision; }
-	public List<LootProposal> getAcceptedProposals() { return Collections.unmodifiableList(acceptedProposals); }
+
+	public void clearHost()
+	{
+		hostMemberId = 0L;
+	}
+
+	public String getSessionId()
+	{
+		return sessionId;
+	}
+
+	public long getPartyId()
+	{
+		return partyId;
+	}
+
+	public Instant getStartedAt()
+	{
+		return startedAt;
+	}
+
+	public boolean isActive()
+	{
+		return true;
+	}
+
+	public long getHostMemberId()
+	{
+		return hostMemberId;
+	}
+
+	public long getMinimumSharedLootValue()
+	{
+		return minimumSharedLootValue;
+	}
+
+	public LootshareSettings getHostSettings()
+	{
+		return LootshareSettings.defaults(minimumSharedLootValue);
+	}
+
+	public long getHostRevision()
+	{
+		return hostRevision;
+	}
+
+	public List<LootProposal> getAcceptedProposals()
+	{
+		return Collections.unmodifiableList(acceptedProposals);
+	}
 }

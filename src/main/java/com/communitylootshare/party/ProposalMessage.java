@@ -139,6 +139,7 @@ public class ProposalMessage extends PartyMemberMessage
 	public static final class DecodedProposal
 	{
 		private final LootProposal proposal;
+
 		private DecodedProposal(LootProposal proposal)
 		{
 			this.proposal = proposal;

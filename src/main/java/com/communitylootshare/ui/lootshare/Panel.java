@@ -91,7 +91,7 @@ public class Panel extends PluginPanel
 	private String partyPassphrase;
 
 	public Panel(PanelActions actions, UiInteractionGateway interactions,
-	                               ItemManager itemManager)
+	             ItemManager itemManager)
 	{
 		this.actions = actions;
 		this.interactions = interactions;

@@ -8,7 +8,6 @@ package com.communitylootshare.ui.lootshare;
 import com.communitylootshare.domain.LootProposal;
 import com.communitylootshare.domain.LootProposalStatus;
 import com.communitylootshare.domain.LootshareCalculation;
-import com.communitylootshare.domain.LootshareParticipant;
 import com.communitylootshare.domain.LootshareSession;
 import com.communitylootshare.domain.LootshareSettings;
 import com.communitylootshare.domain.SharedLootItem;
@@ -68,26 +67,26 @@ public class UiController implements PanelActions
 	private PanelState latestState;
 
 	public UiController(Client client, ClientThread clientThread, PartyService partyService,
-	                                      ItemManager itemManager,
-	                                      LootshareController lootshareController)
+	                    ItemManager itemManager,
+	                    LootshareController lootshareController)
 	{
 		this(client, clientThread, partyService, itemManager, lootshareController, (PartyConfig) null);
 	}
 
 	@Inject
 	public UiController(Client client, ClientThread clientThread, PartyService partyService,
-	                                      ItemManager itemManager,
-	                                      LootshareController lootshareController,
-	                                      ConfigManager configManager)
+	                    ItemManager itemManager,
+	                    LootshareController lootshareController,
+	                    ConfigManager configManager)
 	{
 		this(client, clientThread, partyService, itemManager, lootshareController,
 			configManager.getConfig(PartyConfig.class));
 	}
 
 	UiController(Client client, ClientThread clientThread, PartyService partyService,
-	                               ItemManager itemManager,
-	                               LootshareController lootshareController,
-	                               PartyConfig partyConfig)
+	             ItemManager itemManager,
+	             LootshareController lootshareController,
+	             PartyConfig partyConfig)
 	{
 		this.client = client;
 		this.clientThread = clientThread;

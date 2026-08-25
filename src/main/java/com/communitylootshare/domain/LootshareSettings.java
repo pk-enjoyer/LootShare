@@ -15,6 +15,7 @@ public final class LootshareSettings
 	public static final long DEFAULT_MINIMUM_SHARED_LOOT_VALUE = 100_000L;
 
 	private final long minimumSharedLootValue;
+
 	public LootshareSettings(long minimumSharedLootValue)
 	{
 		if (minimumSharedLootValue < 0L || minimumSharedLootValue > MAXIMUM_SHARED_LOOT_VALUE)

@@ -7,23 +7,23 @@ package com.communitylootshare.integration;
 
 import com.communitylootshare.LootshareConfig;
 import com.communitylootshare.capture.LootCaptureService;
-import com.communitylootshare.domain.LootshareState;
 import com.communitylootshare.domain.LootProposal;
 import com.communitylootshare.domain.LootProposalStatus;
 import com.communitylootshare.domain.LootshareCalculation;
 import com.communitylootshare.domain.LootshareParticipant;
 import com.communitylootshare.domain.LootshareSession;
 import com.communitylootshare.domain.LootshareSettings;
+import com.communitylootshare.domain.LootshareState;
 import com.communitylootshare.domain.SharedLootEvent;
 import com.communitylootshare.party.DecisionMessage;
 import com.communitylootshare.party.HostMessage;
 import com.communitylootshare.party.MemberIdentityMessage;
 import com.communitylootshare.party.ProposalMessage;
 import com.communitylootshare.persistence.LootshareStorage;
+import com.communitylootshare.sessions.LootshareCalculator;
 import com.communitylootshare.sessions.LootshareEngine;
 import com.communitylootshare.sessions.LootshareEngine.DecisionOutcome;
 import com.communitylootshare.sessions.LootshareEngine.MutationResult;
-import com.communitylootshare.sessions.LootshareCalculator;
 import java.io.File;
 import java.time.Instant;
 import java.util.ArrayDeque;
@@ -103,10 +103,10 @@ public class LootshareController
 
 	@Inject
 	public LootshareController(Client client, ClientThread clientThread, PartyService partyService,
-	                                    LootshareConfig config, ScheduledExecutorService executor,
-	                                    LootCaptureService captureService,
-	                                    LootshareEngine engine, LootshareCalculator calculator,
-	                                    LootshareStorage storage)
+	                           LootshareConfig config, ScheduledExecutorService executor,
+	                           LootCaptureService captureService,
+	                           LootshareEngine engine, LootshareCalculator calculator,
+	                           LootshareStorage storage)
 	{
 		this.client = client;
 		this.clientThread = clientThread;
@@ -140,6 +140,17 @@ public class LootshareController
 	private static boolean isLootKeySource(String sourceLabel)
 	{
 		return sourceLabel != null && Text.removeTags(sourceLabel).toLowerCase(Locale.ROOT).contains("loot key");
+	}
+
+	private static String normalizedMemberName(String value)
+	{
+		if (value == null)
+		{
+			return null;
+		}
+		String normalized = Text.sanitize(Text.removeTags(value)).trim();
+		return normalized.isEmpty() || "<unknown>".equalsIgnoreCase(normalized)
+			|| normalized.length() > SharedLootEvent.MAX_RECIPIENT_LENGTH ? null : normalized;
 	}
 
 	public void start()
@@ -856,17 +867,6 @@ public class LootshareController
 		{
 			memberNames.put(memberId, normalized);
 		}
-	}
-
-	private static String normalizedMemberName(String value)
-	{
-		if (value == null)
-		{
-			return null;
-		}
-		String normalized = Text.sanitize(Text.removeTags(value)).trim();
-		return normalized.isEmpty() || "<unknown>".equalsIgnoreCase(normalized)
-			|| normalized.length() > SharedLootEvent.MAX_RECIPIENT_LENGTH ? null : normalized;
 	}
 
 	private boolean claimHostIfEligible(boolean deterministicSuccessor)

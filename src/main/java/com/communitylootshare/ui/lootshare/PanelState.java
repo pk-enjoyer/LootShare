@@ -10,7 +10,6 @@ import java.awt.image.BufferedImage;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 
 /**
@@ -28,29 +27,29 @@ public final class PanelState
 	private final SettlementState settlement;
 
 	public PanelState(boolean ready, boolean inParty, String partyPassphrase,
-	                                    List<MemberLoot> members)
+	                  List<MemberLoot> members)
 	{
 		this(ready, inParty, partyPassphrase, members, false, HostedSettings.waiting());
 	}
 
 	public PanelState(boolean ready, boolean inParty, String partyPassphrase,
-	                                    List<MemberLoot> members, boolean previousPartyAvailable)
+	                  List<MemberLoot> members, boolean previousPartyAvailable)
 	{
 		this(ready, inParty, partyPassphrase, members, previousPartyAvailable, HostedSettings.waiting());
 	}
 
 	public PanelState(boolean ready, boolean inParty, String partyPassphrase,
-	                                    List<MemberLoot> members, boolean previousPartyAvailable,
-	                                    HostedSettings hostedSettings)
+	                  List<MemberLoot> members, boolean previousPartyAvailable,
+	                  HostedSettings hostedSettings)
 	{
 		this(ready, inParty, partyPassphrase, members, previousPartyAvailable, hostedSettings,
 			null, SettlementState.empty());
 	}
 
 	public PanelState(boolean ready, boolean inParty, String partyPassphrase,
-	                                    List<MemberLoot> members, boolean previousPartyAvailable,
-	                                    HostedSettings hostedSettings,
-	                                    String sessionId, SettlementState settlement)
+	                  List<MemberLoot> members, boolean previousPartyAvailable,
+	                  HostedSettings hostedSettings,
+	                  String sessionId, SettlementState settlement)
 	{
 		this.ready = ready;
 		this.inParty = inParty;
@@ -107,6 +106,7 @@ public final class PanelState
 		private final long totalLoot;
 		private final List<BalanceRow> balances;
 		private final List<TransferRow> transfers;
+
 		public SettlementState(long totalLoot, List<BalanceRow> balances, List<TransferRow> transfers)
 		{
 			if (totalLoot < 0L)
