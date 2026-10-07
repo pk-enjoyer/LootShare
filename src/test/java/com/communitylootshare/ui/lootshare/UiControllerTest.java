@@ -70,7 +70,7 @@ public class UiControllerTest
 			return null;
 		}).when(clientThread).invokeLater(any(Runnable.class));
 		controller = new UiController(
-			client, clientThread, partyService, itemManager, lootshareController, null, partyConfig);
+			client, clientThread, partyService, itemManager, lootshareController, partyConfig);
 	}
 
 	@Test
@@ -191,7 +191,7 @@ public class UiControllerTest
 	{
 		RecordingWindowFactory windows = new RecordingWindowFactory();
 		UiController popoutController = new UiController(
-			client, clientThread, partyService, itemManager, lootshareController, null, partyConfig, windows);
+			client, clientThread, partyService, itemManager, lootshareController, partyConfig, windows);
 		Panel target = mock(Panel.class);
 		when(lootshareController.isReady()).thenReturn(true);
 		when(partyService.isInParty()).thenReturn(false);

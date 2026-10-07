@@ -5,13 +5,9 @@
 
 package com.communitylootshare.ui.lootshare;
 
-import com.communitylootshare.debug.DebugSession;
-import com.communitylootshare.debug.DebugSession.LootPreset;
-import com.communitylootshare.debug.DebugSession.Snapshot;
 import com.communitylootshare.domain.LootProposal;
 import com.communitylootshare.domain.LootProposalStatus;
 import com.communitylootshare.domain.LootshareCalculation;
-import com.communitylootshare.domain.LootshareParticipant;
 import com.communitylootshare.domain.LootshareSession;
 import com.communitylootshare.domain.LootshareSettings;
 import com.communitylootshare.domain.MemberApprovalStatus;
@@ -21,7 +17,6 @@ import com.communitylootshare.ui.PopoutWindow;
 import com.communitylootshare.ui.PopoutWindowFactory;
 import com.communitylootshare.ui.SwingPopoutWindowFactory;
 import com.communitylootshare.ui.lootshare.PanelState.BalanceRow;
-import com.communitylootshare.ui.lootshare.PanelState.DebugState;
 import com.communitylootshare.ui.lootshare.PanelState.HostedSettings;
 import com.communitylootshare.ui.lootshare.PanelState.LootItem;
 import com.communitylootshare.ui.lootshare.PanelState.MemberLoot;
@@ -73,11 +68,9 @@ public class UiController implements PanelActions
 	private final PartyService partyService;
 	private final ItemManager itemManager;
 	private final LootshareController lootshareController;
-	private final DebugSession debugSession;
 	private final PartyConfig partyConfig;
 	private final PopoutWindowFactory popoutWindowFactory;
 	private final Object viewLock = new Object();
-	private volatile Map<LootPreset, Long> debugLootPrices = Collections.emptyMap();
 
 	private boolean started;
 	private long viewGeneration;
@@ -90,16 +83,7 @@ public class UiController implements PanelActions
 	                                      ItemManager itemManager,
 	                                      LootshareController lootshareController)
 	{
-		this(client, clientThread, partyService, itemManager, lootshareController, null,
-			(PartyConfig) null, null);
-	}
-
-	public UiController(Client client, ClientThread clientThread, PartyService partyService,
-	                                      ItemManager itemManager,
-	                                      LootshareController lootshareController,
-	                                      DebugSession debugSession)
-	{
-		this(client, clientThread, partyService, itemManager, lootshareController, debugSession,
+		this(client, clientThread, partyService, itemManager, lootshareController,
 			(PartyConfig) null, null);
 	}
 
@@ -107,28 +91,25 @@ public class UiController implements PanelActions
 	public UiController(Client client, ClientThread clientThread, PartyService partyService,
 	                                      ItemManager itemManager,
 	                                      LootshareController lootshareController,
-	                                      DebugSession debugSession,
 	                                      ConfigManager configManager,
 	                                      SwingPopoutWindowFactory popoutWindowFactory)
 	{
-		this(client, clientThread, partyService, itemManager, lootshareController, debugSession,
+		this(client, clientThread, partyService, itemManager, lootshareController,
 			configManager.getConfig(PartyConfig.class), popoutWindowFactory);
 	}
 
 	UiController(Client client, ClientThread clientThread, PartyService partyService,
 	                               ItemManager itemManager,
 	                               LootshareController lootshareController,
-	                               DebugSession debugSession,
 	                               PartyConfig partyConfig)
 	{
-		this(client, clientThread, partyService, itemManager, lootshareController, debugSession,
+		this(client, clientThread, partyService, itemManager, lootshareController,
 			partyConfig, null);
 	}
 
 	UiController(Client client, ClientThread clientThread, PartyService partyService,
 	                               ItemManager itemManager,
 	                               LootshareController lootshareController,
-	                               DebugSession debugSession,
 	                               PartyConfig partyConfig, PopoutWindowFactory popoutWindowFactory)
 	{
 		this.client = client;
@@ -136,7 +117,6 @@ public class UiController implements PanelActions
 		this.partyService = partyService;
 		this.itemManager = itemManager;
 		this.lootshareController = lootshareController;
-		this.debugSession = debugSession;
 		this.partyConfig = partyConfig;
 		this.popoutWindowFactory = popoutWindowFactory;
 	}
@@ -216,11 +196,6 @@ public class UiController implements PanelActions
 	public void stop()
 	{
 		lootshareController.setStateChangeListener(null);
-		if (debugSession != null)
-		{
-			debugSession.stopSimulation();
-		}
-		debugLootPrices = Collections.emptyMap();
 		synchronized (viewLock)
 		{
 			started = false;
@@ -275,10 +250,6 @@ public class UiController implements PanelActions
 	@Override
 	public void createParty()
 	{
-		if (isDebugSimulationActive())
-		{
-			return;
-		}
 		clientThread.invokeLater(() -> {
 			if (isStarted() && !partyService.isInParty())
 			{
@@ -291,7 +262,7 @@ public class UiController implements PanelActions
 	public boolean joinParty(String passphrase)
 	{
 		String normalized = normalizePassphrase(passphrase);
-		if (normalized == null || !isStarted() || isDebugSimulationActive())
+		if (normalized == null || !isStarted())
 		{
 			return false;
 		}
@@ -308,7 +279,7 @@ public class UiController implements PanelActions
 	public void joinPreviousParty()
 	{
 		String previousParty = previousPartyPassphrase();
-		if (previousParty == null || !isStarted() || isDebugSimulationActive())
+		if (previousParty == null || !isStarted())
 		{
 			return;
 		}
@@ -323,11 +294,6 @@ public class UiController implements PanelActions
 	@Override
 	public void leaveParty()
 	{
-		if (isDebugSimulationActive())
-		{
-			stopDebugSimulation();
-			return;
-		}
 		clientThread.invokeLater(() -> {
 			if (isStarted() && partyService.isInParty())
 			{
@@ -339,7 +305,7 @@ public class UiController implements PanelActions
 	@Override
 	public void transferHost(long memberId)
 	{
-		if (!isStarted() || isDebugSimulationActive())
+		if (!isStarted())
 		{
 			return;
 		}
@@ -356,12 +322,6 @@ public class UiController implements PanelActions
 	{
 		if (!isStarted())
 		{
-			return;
-		}
-		if (isDebugSimulationActive())
-		{
-			debugSession.setMemberApproved(memberId, approved);
-			refresh();
 			return;
 		}
 		clientThread.invokeLater(() -> {
@@ -432,71 +392,9 @@ public class UiController implements PanelActions
 	}
 
 	@Override
-	public void startDebugSimulation()
-	{
-		if (isStarted() && isDebugAvailable())
-		{
-			debugLootPrices = Collections.emptyMap();
-			debugSession.startSimulation();
-			refresh();
-		}
-	}
-
-	@Override
-	public void stopDebugSimulation()
-	{
-		if (isDebugAvailable())
-		{
-			debugSession.stopSimulation();
-			debugLootPrices = Collections.emptyMap();
-			refresh();
-		}
-	}
-
-	@Override
-	public void resetDebugSimulation()
-	{
-		if (isStarted() && isDebugSimulationActive())
-		{
-			debugSession.resetSimulation();
-			refresh();
-		}
-	}
-
-	@Override
-	public boolean addDebugPlayer(String displayName)
-	{
-		boolean added = isStarted() && isDebugSimulationActive()
-			&& debugSession.addFakePlayer(displayName).isPresent();
-		if (added)
-		{
-			refresh();
-		}
-		return added;
-	}
-
-	@Override
-	public boolean removeDebugPlayer(long memberId)
-	{
-		boolean removed = isStarted() && isDebugSimulationActive()
-			&& debugSession.removeFakePlayer(memberId);
-		if (removed)
-		{
-			refresh();
-		}
-		return removed;
-	}
-
-	@Override
-	public boolean addDebugLoot(long ownerMemberId, long totalValue)
-	{
-		return addDebugLoot(ownerMemberId, LootPreset.COINS, totalValue);
-	}
-
-	@Override
 	public void addManualGp(long memberId, long amount)
 	{
-		if (!isStarted() || isDebugSimulationActive())
+		if (!isStarted())
 		{
 			return;
 		}
@@ -506,25 +404,6 @@ public class UiController implements PanelActions
 				lootshareController.addManualGp(memberId, amount);
 			}
 		});
-	}
-
-	@Override
-	public boolean addDebugLoot(long ownerMemberId, LootPreset lootPreset, long totalValue)
-	{
-		if (lootPreset == null)
-		{
-			return false;
-		}
-		long capturedValue = lootPreset.usesItemPrice()
-			? debugLootPrices.getOrDefault(lootPreset, 0L)
-			: totalValue;
-		boolean added = isStarted() && isDebugSimulationActive()
-			&& debugSession.addSampleProposal(ownerMemberId, lootPreset, capturedValue).isPresent();
-		if (added)
-		{
-			refresh();
-		}
-		return added;
 	}
 
 	public void onPartyChanged(PartyChanged event)
@@ -542,17 +421,13 @@ public class UiController implements PanelActions
 
 	PanelState buildState()
 	{
-		if (isDebugSimulationActive())
-		{
-			return buildDebugState(debugSession.snapshot());
-		}
 		boolean ready = lootshareController.isReady();
 		boolean inParty = partyService.isInParty();
 		boolean previousPartyAvailable = previousPartyPassphrase() != null;
 		if (!inParty)
 		{
 			return new PanelState(
-				ready, false, null, Collections.emptyList(), previousPartyAvailable, currentDebugState());
+				ready, false, null, Collections.emptyList(), previousPartyAvailable);
 		}
 
 		List<LootProposal> proposals = lootshareController.getActivePartyProposals();
@@ -615,7 +490,7 @@ public class UiController implements PanelActions
 		}
 		return new PanelState(
 			ready, true, partyService.getPartyPassphrase(), members, previousPartyAvailable,
-			currentDebugState(), hostedSettings,
+			hostedSettings,
 			activeSession == null ? null : activeSession.getSessionId(),
 			buildSettlementState(activeSession, calculation));
 	}
@@ -670,41 +545,6 @@ public class UiController implements PanelActions
 			proposalCount, pendingProposalCount, totalValue, items, approvalStatus);
 	}
 
-	private PanelState buildDebugState(Snapshot snapshot)
-	{
-		Map<LootPreset, Long> lootPresetPrices = resolveDebugLootPrices();
-		debugLootPrices = lootPresetPrices;
-		Map<Long, List<LootProposal>> proposalsByOwner = new HashMap<>();
-		for (LootProposal proposal : snapshot.getProposals())
-		{
-			proposalsByOwner.computeIfAbsent(proposal.getOwnerMemberId(), ignored -> new ArrayList<>())
-				.add(proposal);
-		}
-		Map<Integer, String> itemNames = new HashMap<>();
-		List<MemberLoot> members = new ArrayList<>();
-		for (LootshareParticipant participant : snapshot.getParticipants())
-		{
-			long memberId = participant.getMemberId();
-			members.add(buildMember(memberId, participant.getDisplayName(),
-				memberId == snapshot.getOwnerMemberId(), memberId == snapshot.getOwnerMemberId(), true, null,
-				proposalsByOwner.getOrDefault(memberId, Collections.emptyList()), itemNames,
-				snapshot.getSession().getMemberApprovalStatus(memberId)));
-		}
-		members.sort((left, right) -> {
-			int byLocal = Boolean.compare(right.isLocal(), left.isLocal());
-			if (byLocal != 0)
-			{
-				return byLocal;
-			}
-			int byName = String.CASE_INSENSITIVE_ORDER.compare(left.getDisplayName(), right.getDisplayName());
-			return byName != 0 ? byName : Long.compare(left.getMemberId(), right.getMemberId());
-		});
-		return new PanelState(true, true, null, members, false,
-			new DebugState(true, true, snapshot.getOwnerMemberId(), lootPresetPrices), HostedSettings.waiting(),
-			snapshot.getSession().getSessionId(),
-			buildSettlementState(snapshot.getSession(), snapshot.getCalculation()));
-	}
-
 	private SettlementState buildSettlementState(LootshareSession session, LootshareCalculation calculation)
 	{
 		if (session == null || calculation == null)
@@ -730,33 +570,6 @@ public class UiController implements PanelActions
 			graphs.put(mode, GraphData.build(session, calculation, mode, now));
 		}
 		return new SettlementState(calculation.getTotalAcceptedValue(), balances, transfers, graphs);
-	}
-
-	private Map<LootPreset, Long> resolveDebugLootPrices()
-	{
-		EnumMap<LootPreset, Long> prices = new EnumMap<>(LootPreset.class);
-		for (LootPreset lootPreset : LootPreset.values())
-		{
-			if (lootPreset.usesItemPrice())
-			{
-				prices.put(lootPreset, resolveDebugLootPrice(lootPreset));
-			}
-		}
-		return Collections.unmodifiableMap(prices);
-	}
-
-	private long resolveDebugLootPrice(LootPreset lootPreset)
-	{
-		try
-		{
-			return Math.max(0L, itemManager.getItemPrice(lootPreset.getItemId()));
-		}
-		catch (RuntimeException e)
-		{
-			log.debug("Unable to resolve Community Lootshare debug price for item {}",
-				lootPreset.getItemId(), e);
-			return 0L;
-		}
 	}
 
 	private String resolveItemName(int itemId)
@@ -785,23 +598,6 @@ public class UiController implements PanelActions
 		{
 			return started;
 		}
-	}
-
-	private boolean isDebugAvailable()
-	{
-		return debugSession != null && debugSession.isAvailable();
-	}
-
-	private boolean isDebugSimulationActive()
-	{
-		return isDebugAvailable() && debugSession.isActive();
-	}
-
-	private DebugState currentDebugState()
-	{
-		return isDebugAvailable()
-			? new DebugState(true, false, 0L)
-			: DebugState.unavailable();
 	}
 
 	private void onSettlementDashboardClosed(SettlementDashboard dashboard)

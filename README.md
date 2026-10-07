@@ -55,9 +55,7 @@ The active Community Lootshare implementation provides:
   collapsible effective-host-settings summary, eligibility badges/actions,
   per-member loot summaries, and an auto-opening settlement section;
 - exact balance and direct-payment tables plus a reusable settlement dashboard
-  with GP/hr, highest-earnings, and settlement-balance graphs; and
-- a developer-mode-only, in-memory simulation menu for adding fake Party
-  members and deterministic sample loot without sending or persisting it.
+  with GP/hr, highest-earnings, and settlement-balance graphs.
 
 Eligibility changes only affect future decisions. Every accepted proposal keeps
 its frozen roster, so excluding a member later does not rewrite earlier balances.
@@ -68,22 +66,6 @@ The sidebar now covers Party setup, the effective host policy, member eligibilit
 per-member loot inspection, balances, and settlement payments. The graph button
 opens one reusable settlement dashboard window and focuses it if it is already
 open. A history view, overlay, and notifications are not implemented yet.
-
-## Developer Simulation
-
-`./gradlew run` already starts RuneLite with `--developer-mode`. In that client,
-open the Community Lootshare sidebar and use **Developer simulation** to start a
-local scenario, add or remove fake Party members, approve them from their member
-cards, choose a recipient, and add
-either a custom-value coin stack or a Tombs of Amascut reward preset: Osmumten's
-fang, Lightbearer, Masori body, or Tumeken's shadow. Item presets capture their
-current RuneLite item price automatically. Reset returns to a clean simulated
-Party; **Return to live Party** restores the real Party view.
-
-The simulation uses a separate in-memory state engine. Fake members and sample
-loot are never inserted into RuneLite's `PartyService`, sent over Party
-messages, or written to Community Lootshare profile history. The controls are
-not available in a normal non-developer RuneLite launch.
 
 ## Manual GP
 

@@ -9,7 +9,6 @@ import com.communitylootshare.domain.LootValueBasis;
 import com.communitylootshare.domain.LootshareSettings;
 import com.communitylootshare.domain.MemberApprovalStatus;
 import com.communitylootshare.testing.RecordingUiInteractions;
-import com.communitylootshare.ui.lootshare.PanelState.DebugState;
 import com.communitylootshare.ui.lootshare.PanelState.HostedSettings;
 import com.communitylootshare.ui.lootshare.PanelState.LootItem;
 import com.communitylootshare.ui.lootshare.PanelState.MemberLoot;
@@ -139,7 +138,7 @@ public class PanelTest
 			true, false, true, false, true, true);
 		HostedSettings hostedSettings = HostedSettings.available(1L, "Alice", true, settings);
 		PanelState state = new PanelState(true, true, "party-pass",
-			Collections.emptyList(), false, DebugState.unavailable(), hostedSettings);
+			Collections.emptyList(), false, hostedSettings);
 
 		SwingUtilities.invokeAndWait(() -> {
 			panel.render(state);
@@ -244,7 +243,7 @@ public class PanelTest
 				new BalanceRow(2L, "Bob", 0L, 150L, 150L)),
 			Collections.singletonList(new TransferRow("Alice", "Bob", 150L)), Collections.emptyMap());
 		PanelState state = new PanelState(true, true, "party-pass",
-			Collections.emptyList(), false, DebugState.unavailable(), HostedSettings.waiting(),
+			Collections.emptyList(), false, HostedSettings.waiting(),
 			"session-one", settlement);
 
 		SwingUtilities.invokeAndWait(() -> {
@@ -258,7 +257,7 @@ public class PanelTest
 			assertFalse(panel.getSettlementView().isVisible());
 
 			panel.render(new PanelState(true, true, "party-pass",
-				Collections.emptyList(), false, DebugState.unavailable(), HostedSettings.waiting(),
+				Collections.emptyList(), false, HostedSettings.waiting(),
 				"session-two", settlement));
 			assertTrue(panel.getSettlementView().isVisible());
 		});

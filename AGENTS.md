@@ -221,7 +221,6 @@ Uphold these during normal changes:
 - `LootshareStorage` writes schema-7 profile files beneath `RuneLite.RUNELITE_DIR/community-lootshare` through an atomic temporary-file replacement. New snapshots use gzip at a stable profile-ID path; a unique legacy name-based file migrates without deleting its backup, and legacy plain JSON remains readable. Domain-invalid and ambiguous histories remain read-only. A separate owner-readable `.signer` file preserves the profile signing identity and is loaded off the client thread; only public host authority/key metadata and decision commitments go into RuneLite configuration. Compressed files are bounded at 5 MiB and expanded/plain content at 64 MiB, with write limits enforced before replacement. Malformed, oversized, or future-schema files become read-only instead of being overwritten.
 - `LootshareCalculator` freezes entitlement per accepted proposal roster, assigns indivisible-coin remainders deterministically by Party member ID, and emits zero-sum balances plus direct settlement transfers.
 - `ui/lootshare/Panel` and `UiController` provide create/join/rejoin/leave Party controls, a collapsible effective-host-settings section, host-managed member eligibility, manual-GP actions, collapsible per-member loot summaries, a settlement section, and a reusable settlement graph popout. Rejoin uses RuneLite Party's existing hidden `previousPartyId` setting.
-- `DebugSession` and the sidebar's developer simulation controls provide isolated in-memory fake members plus coin and Tombs of Amascut loot presets only when RuneLite developer mode is active. Coin value is user-provided; item presets capture `ItemManager` prices resolved in the controller's client-thread snapshot. Debug state never mutates `PartyService`, sends Party messages, or persists.
 - No Community Lootshare overlay, notification, or history view is implemented yet. Do not present the sidebar as a user-complete workflow.
 
 ## Testing Guidance
@@ -273,4 +272,3 @@ Research references:
 ## Current Cautions
 
 - The repository may contain local uncommitted changes; check `git status --short` before editing and do not revert unrelated user work.
-- The developer simulation is intentionally isolated: it must never mutate `PartyService`, send Party messages, or persist history.

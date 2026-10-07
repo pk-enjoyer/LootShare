@@ -85,10 +85,8 @@ public class Panel extends PluginPanel
 	private final JButton settlementGraphsButton = new JButton("Graphs ↗");
 	private final Set<Long> expandedMembers = new HashSet<>();
 	private final Map<Long, MemberCard> memberCards = new HashMap<>();
-	private final DebugPanel debugPanel;
 
 	private boolean inParty;
-	private boolean debugSimulation;
 	private boolean localHost;
 	private boolean memberManualGpAllowed;
 	private boolean hostedSettingsExpanded;
@@ -103,7 +101,6 @@ public class Panel extends PluginPanel
 		this.actions = actions;
 		this.interactions = interactions;
 		this.itemManager = itemManager;
-		this.debugPanel = new DebugPanel(actions);
 
 		setBorder(new EmptyBorder(10, 10, 10, 10));
 		setBackground(ColorScheme.DARK_GRAY_COLOR);
@@ -119,8 +116,6 @@ public class Panel extends PluginPanel
 		content.add(buildMembersSection());
 		content.add(Box.createRigidArea(new Dimension(0, 8)));
 		content.add(buildSettlementSection());
-		content.add(Box.createRigidArea(new Dimension(0, 8)));
-		content.add(debugPanel);
 		add(content, BorderLayout.NORTH);
 
 		primaryButton.addActionListener(event -> onPrimaryAction());
@@ -234,14 +229,12 @@ public class Panel extends PluginPanel
 			return;
 		}
 		inParty = state.isInParty();
-		debugSimulation = state.getDebug().isSimulationActive();
 		localHost = state.getMembers().stream().anyMatch(member -> member.isLocal() && member.isHost());
 		partyPassphrase = state.getPartyPassphrase();
 		renderConnection(state);
 		renderHostedSettings(state.getHostedSettings());
 		renderMembers(state.getMembers());
 		renderSettlement(state);
-		debugPanel.render(state);
 		revalidate();
 		repaint();
 	}
@@ -360,10 +353,10 @@ public class Panel extends PluginPanel
 
 	private void renderConnection(PanelState state)
 	{
-		primaryButton.setText(debugSimulation ? "Exit debug" : inParty ? "Leave" : "Create party");
+		primaryButton.setText(inParty ? "Leave" : "Create party");
 		secondaryButton.setVisible(!inParty);
 		previousPartyButton.setVisible(!inParty);
-		copyButton.setVisible(inParty && !debugSimulation);
+		copyButton.setVisible(inParty);
 		copyButton.setEnabled(partyPassphrase != null && !partyPassphrase.trim().isEmpty());
 		primaryButton.setEnabled(state.isReady());
 		secondaryButton.setEnabled(state.isReady());
@@ -371,10 +364,6 @@ public class Panel extends PluginPanel
 		if (!state.isReady())
 		{
 			connectionStatus.setText("Loading profile...");
-		}
-		else if (debugSimulation)
-		{
-			connectionStatus.setText("Developer simulation (local only).");
 		}
 		else if (!inParty)
 		{
@@ -392,7 +381,7 @@ public class Panel extends PluginPanel
 
 	private void renderHostedSettings(HostedSettings hostedSettings)
 	{
-		boolean visible = inParty && !debugSimulation;
+		boolean visible = inParty;
 		memberManualGpAllowed = hostedSettings.isAvailable()
 			&& hostedSettings.getSettings().isAllowMemberManualGp();
 		hostedSettingsSection.setVisible(visible);
@@ -502,11 +491,6 @@ public class Panel extends PluginPanel
 
 	private void onPrimaryAction()
 	{
-		if (debugSimulation)
-		{
-			actions.stopDebugSimulation();
-			return;
-		}
 		if (!inParty)
 		{
 			actions.createParty();
@@ -603,11 +587,6 @@ public class Panel extends PluginPanel
 	MemberCard getMemberCard(long memberId)
 	{
 		return memberCards.get(memberId);
-	}
-
-	DebugPanel getDebugPanel()
-	{
-		return debugPanel;
 	}
 
 	final class MemberCard extends JPanel
@@ -707,7 +686,7 @@ public class Panel extends PluginPanel
 
 		private JMenuItem buildTransferHostItem(MemberLoot member)
 		{
-			if (debugSimulation || !localHost || member.isLocal() || member.isHost())
+			if (!localHost || member.isLocal() || member.isHost())
 			{
 				return null;
 			}

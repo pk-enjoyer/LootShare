@@ -5,7 +5,6 @@
 
 package com.communitylootshare.ui.lootshare;
 
-import com.communitylootshare.debug.DebugSession.LootPreset;
 import com.communitylootshare.domain.LootshareSettings;
 import com.communitylootshare.domain.MemberApprovalStatus;
 import com.communitylootshare.views.graph.SessionGraphMode;
@@ -28,7 +27,6 @@ public final class PanelState
 	private final String partyPassphrase;
 	private final List<MemberLoot> members;
 	private final boolean previousPartyAvailable;
-	private final DebugState debug;
 	private final HostedSettings hostedSettings;
 	private final String sessionId;
 	private final SettlementState settlement;
@@ -36,41 +34,27 @@ public final class PanelState
 	public PanelState(boolean ready, boolean inParty, String partyPassphrase,
 	                                    List<MemberLoot> members)
 	{
-		this(ready, inParty, partyPassphrase, members, false, DebugState.unavailable(), HostedSettings.waiting());
+		this(ready, inParty, partyPassphrase, members, false, HostedSettings.waiting());
 	}
 
 	public PanelState(boolean ready, boolean inParty, String partyPassphrase,
 	                                    List<MemberLoot> members, boolean previousPartyAvailable)
 	{
 		this(ready, inParty, partyPassphrase, members, previousPartyAvailable,
-			DebugState.unavailable(), HostedSettings.waiting());
-	}
-
-	public PanelState(boolean ready, boolean inParty, String partyPassphrase,
-	                                    List<MemberLoot> members, DebugState debug)
-	{
-		this(ready, inParty, partyPassphrase, members, false, debug, HostedSettings.waiting());
-	}
-
-	public PanelState(boolean ready, boolean inParty, String partyPassphrase,
-	                                    List<MemberLoot> members, boolean previousPartyAvailable,
-	                                    DebugState debug)
-	{
-		this(ready, inParty, partyPassphrase, members, previousPartyAvailable, debug,
 			HostedSettings.waiting());
 	}
 
 	public PanelState(boolean ready, boolean inParty, String partyPassphrase,
 	                                    List<MemberLoot> members, boolean previousPartyAvailable,
-	                                    DebugState debug, HostedSettings hostedSettings)
+	                                    HostedSettings hostedSettings)
 	{
-		this(ready, inParty, partyPassphrase, members, previousPartyAvailable, debug, hostedSettings,
+		this(ready, inParty, partyPassphrase, members, previousPartyAvailable, hostedSettings,
 			null, SettlementState.empty());
 	}
 
 	public PanelState(boolean ready, boolean inParty, String partyPassphrase,
 	                                    List<MemberLoot> members, boolean previousPartyAvailable,
-	                                    DebugState debug, HostedSettings hostedSettings,
+	                                    HostedSettings hostedSettings,
 	                                    String sessionId, SettlementState settlement)
 	{
 		this.ready = ready;
@@ -78,7 +62,6 @@ public final class PanelState
 		this.partyPassphrase = partyPassphrase;
 		this.members = Collections.unmodifiableList(new ArrayList<>(Objects.requireNonNull(members, "members")));
 		this.previousPartyAvailable = previousPartyAvailable;
-		this.debug = Objects.requireNonNull(debug, "debug");
 		this.hostedSettings = Objects.requireNonNull(hostedSettings, "hostedSettings");
 		this.sessionId = sessionId;
 		this.settlement = Objects.requireNonNull(settlement, "settlement");
@@ -107,11 +90,6 @@ public final class PanelState
 	public boolean isPreviousPartyAvailable()
 	{
 		return previousPartyAvailable;
-	}
-
-	public DebugState getDebug()
-	{
-		return debug;
 	}
 
 	public HostedSettings getHostedSettings()
@@ -337,77 +315,6 @@ public final class PanelState
 		public LootshareSettings getSettings()
 		{
 			return settings == null ? null : settings.validatedCopy();
-		}
-	}
-
-	public static final class DebugState
-	{
-		private final boolean available;
-		private final boolean simulationActive;
-		private final long ownerMemberId;
-		private final Map<LootPreset, Long> lootPresetPrices;
-
-		public DebugState(boolean available, boolean simulationActive, long ownerMemberId)
-		{
-			this(available, simulationActive, ownerMemberId, Collections.emptyMap());
-		}
-
-		public DebugState(boolean available, boolean simulationActive, long ownerMemberId,
-		                  Map<LootPreset, Long> lootPresetPrices)
-		{
-			if (!available && simulationActive)
-			{
-				throw new IllegalArgumentException("An unavailable debug session cannot be active");
-			}
-			if (simulationActive && ownerMemberId <= 0L)
-			{
-				throw new IllegalArgumentException("An active debug session requires an owner");
-			}
-			this.available = available;
-			this.simulationActive = simulationActive;
-			this.ownerMemberId = simulationActive ? ownerMemberId : 0L;
-			EnumMap<LootPreset, Long> prices = new EnumMap<>(LootPreset.class);
-			for (Map.Entry<LootPreset, Long> entry : Objects.requireNonNull(
-				lootPresetPrices, "lootPresetPrices").entrySet())
-			{
-				LootPreset preset = Objects.requireNonNull(entry.getKey(), "lootPreset");
-				Long price = Objects.requireNonNull(entry.getValue(), "lootPresetPrice");
-				if (price < 0L)
-				{
-					throw new IllegalArgumentException("Debug loot preset prices must be non-negative");
-				}
-				prices.put(preset, price);
-			}
-			this.lootPresetPrices = Collections.unmodifiableMap(prices);
-		}
-
-		public static DebugState unavailable()
-		{
-			return new DebugState(false, false, 0L);
-		}
-
-		public boolean isAvailable()
-		{
-			return available;
-		}
-
-		public boolean isSimulationActive()
-		{
-			return simulationActive;
-		}
-
-		public long getOwnerMemberId()
-		{
-			return ownerMemberId;
-		}
-
-		public long getLootPresetPrice(LootPreset lootPreset)
-		{
-			if (lootPreset == null)
-			{
-				return 0L;
-			}
-			return lootPresetPrices.getOrDefault(lootPreset, 0L);
 		}
 	}
 
