@@ -55,7 +55,8 @@ public final class SharedLootEvent
 		this.proposalId = proposalId.trim();
 		this.recipient = recipient.trim();
 		this.sourceLabel = sourceLabel.trim();
-		this.capturedAt = capturedAt;
+		// Party payloads retain milliseconds; local and restored identities must use the same precision.
+		this.capturedAt = Instant.ofEpochMilli(capturedAt.toEpochMilli());
 		this.items = Collections.unmodifiableList(copy);
 	}
 

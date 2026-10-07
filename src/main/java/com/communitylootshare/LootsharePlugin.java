@@ -4,6 +4,7 @@ import com.communitylootshare.integration.LootshareController;
 import com.communitylootshare.party.DecisionMessage;
 import com.communitylootshare.party.HostMessage;
 import com.communitylootshare.party.ProposalMessage;
+import com.communitylootshare.party.RecoveryMessage;
 import com.communitylootshare.ui.SwingUiInteractionGateway;
 import com.communitylootshare.ui.lootshare.Panel;
 import com.communitylootshare.ui.lootshare.UiController;
@@ -80,6 +81,7 @@ public class LootsharePlugin extends Plugin
 		wsClient.registerMessage(ProposalMessage.class);
 		wsClient.registerMessage(DecisionMessage.class);
 		wsClient.registerMessage(HostMessage.class);
+		wsClient.registerMessage(RecoveryMessage.class);
 		controller.start();
 		SwingUtilities.invokeLater(() -> {
 			if (!started)
@@ -116,6 +118,7 @@ public class LootsharePlugin extends Plugin
 		wsClient.unregisterMessage(ProposalMessage.class);
 		wsClient.unregisterMessage(DecisionMessage.class);
 		wsClient.unregisterMessage(HostMessage.class);
+		wsClient.unregisterMessage(RecoveryMessage.class);
 	}
 
 	@Subscribe
@@ -155,6 +158,12 @@ public class LootsharePlugin extends Plugin
 	}
 
 	@Subscribe
+	public void onCommunityLootshareRecoveryMessage(RecoveryMessage message)
+	{
+		controller.onRecoveryMessage(message);
+	}
+
+	@Subscribe
 	public void onPartyChanged(PartyChanged event)
 	{
 		controller.onPartyChanged(event);
@@ -178,7 +187,8 @@ public class LootsharePlugin extends Plugin
 	@Subscribe
 	public void onConfigChanged(ConfigChanged event)
 	{
-		if (event != null && LootshareConfig.GROUP.equals(event.getGroup()))
+		if (event != null && LootshareConfig.GROUP.equals(event.getGroup())
+			&& (event.getKey() == null || !event.getKey().startsWith("hostState.")))
 		{
 			controller.onLocalConfigurationChanged();
 			uiController.refresh();

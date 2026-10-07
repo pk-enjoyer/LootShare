@@ -6,6 +6,7 @@
 package com.communitylootshare.party;
 
 import com.communitylootshare.domain.LootProposal;
+import com.communitylootshare.domain.LootshareSettings;
 import com.communitylootshare.domain.SharedLootEvent;
 import com.communitylootshare.domain.SharedLootItem;
 import java.time.Instant;
@@ -45,7 +46,7 @@ public class ProposalMessage extends PartyMemberMessage
 		}
 		SharedLootEvent event = proposal.getEvent();
 		this.ownerMemberId = proposal.getOwnerMemberId();
-		this.manualGp = manualGp;
+		this.manualGp = manualGp || hasManualGpMarker(event);
 		this.proposalId = event.getProposalId();
 		this.recipient = event.getRecipient();
 		this.sourceLabel = event.getSourceLabel();
@@ -81,7 +82,12 @@ public class ProposalMessage extends PartyMemberMessage
 			}
 			SharedLootEvent event = new SharedLootEvent(proposalId, recipient, sourceLabel,
 				Instant.ofEpochMilli(capturedAtEpochMilli), decodedItems);
-			return Optional.of(new DecodedProposal(LootProposal.pending(partyId, decodedOwnerMemberId, event), manualGp));
+			boolean decodedManualGp = manualGp || hasManualGpMarker(event);
+			if (decodedManualGp && !isValidManualGp(event))
+			{
+				return Optional.empty();
+			}
+			return Optional.of(new DecodedProposal(LootProposal.pending(partyId, decodedOwnerMemberId, event), decodedManualGp));
 		}
 		catch (RuntimeException ignored)
 		{
@@ -112,6 +118,24 @@ public class ProposalMessage extends PartyMemberMessage
 	public boolean isManualGp()
 	{
 		return manualGp;
+	}
+
+	private static boolean hasManualGpMarker(SharedLootEvent event)
+	{
+		return "Manual GP".equals(event.getSourceLabel())
+			|| event.getProposalId().startsWith("manual-gp-")
+			|| event.getItems().stream().anyMatch(item -> item.getItemId() == 0 || item.getPricingId() == 0);
+	}
+
+	private static boolean isValidManualGp(SharedLootEvent event)
+	{
+		if (!"Manual GP".equals(event.getSourceLabel()) || event.getItems().size() != 1)
+		{
+			return false;
+		}
+		SharedLootItem item = event.getItems().get(0);
+		return item.getItemId() == 0 && item.getPricingId() == 0 && item.getQuantity() == 1L
+			&& item.getUnitPrice() > 0L && item.getUnitPrice() <= LootshareSettings.MAXIMUM_SHARED_LOOT_VALUE;
 	}
 
 	public List<ItemPayload> getItems()

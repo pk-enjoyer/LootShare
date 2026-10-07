@@ -7,21 +7,29 @@ package com.communitylootshare.domain;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Base64;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 public final class LootshareSession
 {
 	public static final int MAX_ACCEPTED_PROPOSALS = 4096;
+	public static final int MAX_REJECTED_PROPOSALS = 4096;
 	public static final int MAX_MEMBER_APPROVALS = 64;
+	public static final int MAX_DECISION_KEYS = 128;
+	public static final int MAX_DECISION_AUTHORIZATIONS = MAX_ACCEPTED_PROPOSALS + MAX_REJECTED_PROPOSALS;
 	public static final long MAXIMUM_SHARED_LOOT_VALUE = LootshareSettings.MAXIMUM_SHARED_LOOT_VALUE;
 
 	private final String sessionId;
 	private final long partyId;
 	private final Instant startedAt;
 	private final List<LootProposal> acceptedProposals = new ArrayList<>();
+	private List<LootProposal> rejectedProposals = new ArrayList<>();
 	private Instant endedAt;
 	private long hostMemberId;
 	/**
@@ -31,6 +39,8 @@ public final class LootshareSession
 	private LootshareSettings hostSettings;
 	private long hostRevision;
 	private Map<Long, MemberApprovalStatus> memberApprovalStatuses = new LinkedHashMap<>();
+	private Map<String, Long> decisionKeys = new LinkedHashMap<>();
+	private Set<String> decisionAuthorizations = new LinkedHashSet<>();
 
 	public LootshareSession(String sessionId, long partyId, Instant startedAt)
 	{
@@ -70,7 +80,9 @@ public final class LootshareSession
 			aggregateValue = Math.addExact(aggregateValue, accepted.getEvent().getTotal());
 		}
 		Math.addExact(aggregateValue, proposal.getEvent().getTotal());
-		acceptedProposals.add(proposal.validatedCopy());
+		LootProposal validated = proposal.validatedCopy();
+		authorizeDecision(validated);
+		acceptedProposals.add(validated);
 		acceptedProposals.sort((left, right) -> {
 			int byDecision = left.getDecidedAt().compareTo(right.getDecidedAt());
 			return byDecision != 0 ? byDecision : left.getProposalId().compareTo(right.getProposalId());
@@ -92,19 +104,163 @@ public final class LootshareSession
 		return true;
 	}
 
+	public boolean addRejectedProposal(LootProposal proposal)
+	{
+		if (proposal == null || proposal.getStatus() != LootProposalStatus.REJECTED
+			|| proposal.getPartyId() != partyId)
+		{
+			throw new IllegalArgumentException("Session can only archive rejected proposals for its party");
+		}
+		if (getRejectedProposals().stream().anyMatch(existing -> existing.getProposalId().equals(proposal.getProposalId())))
+		{
+			return false;
+		}
+		if (getRejectedProposals().size() >= MAX_REJECTED_PROPOSALS)
+		{
+			throw new IllegalStateException("Session rejected-proposal limit reached");
+		}
+		if (rejectedProposals == null)
+		{
+			// Older JSON snapshots have no rejected-proposal archive.
+			rejectedProposals = new ArrayList<>();
+		}
+		LootProposal validated = proposal.validatedCopy();
+		authorizeDecision(validated);
+		rejectedProposals.add(validated);
+		return true;
+	}
+
 	public LootshareSession snapshot()
 	{
 		LootshareSession copy = new LootshareSession(sessionId, partyId, startedAt);
 		copy.setHostState(hostMemberId, getHostSettings(), hostRevision, getMemberApprovalStatuses());
+		copy.trustDecisionKeys(getDecisionKeys());
+		copy.trustDecisionAuthorizations(getDecisionAuthorizations());
 		for (LootProposal proposal : acceptedProposals)
 		{
 			copy.addAcceptedProposal(proposal);
+		}
+		for (LootProposal proposal : getRejectedProposals())
+		{
+			copy.addRejectedProposal(proposal);
 		}
 		if (endedAt != null)
 		{
 			copy.end(endedAt);
 		}
 		return copy;
+	}
+
+	public void replaceFinalizedProposal(LootProposal proposal)
+	{
+		List<LootProposal> records = proposal.getStatus() == LootProposalStatus.ACCEPTED
+			? acceptedProposals : rejectedProposals;
+		if (records == null)
+		{
+			return;
+		}
+		for (int index = 0; index < records.size(); index++)
+		{
+			LootProposal existing = records.get(index);
+			if (existing.getProposalId().equals(proposal.getProposalId()))
+			{
+				if (!existing.hasSameIdentity(proposal) || existing.getStatus() != proposal.getStatus()
+					|| !existing.getDecidedAt().equals(proposal.getDecidedAt())
+					|| !existing.getParticipants().equals(proposal.getParticipants()))
+				{
+					throw new IllegalArgumentException("Cannot replace a frozen decision");
+				}
+				records.set(index, proposal.validatedCopy());
+				return;
+			}
+		}
+	}
+
+	public void resume()
+	{
+		endedAt = null;
+	}
+
+	private void authorizeDecision(LootProposal proposal)
+	{
+		String id = LootDecisionReceipt.decisionId(proposal);
+		if (decisionAuthorizations == null)
+		{
+			decisionAuthorizations = new LinkedHashSet<>();
+		}
+		if (!decisionAuthorizations.contains(id) && decisionAuthorizations.size() >= MAX_DECISION_AUTHORIZATIONS)
+		{
+			throw new IllegalStateException("Decision authorization limit reached");
+		}
+		decisionAuthorizations.add(id);
+	}
+
+	public Set<String> getDecisionAuthorizations()
+	{
+		return decisionAuthorizations == null ? Collections.emptySet()
+			: Collections.unmodifiableSet(new LinkedHashSet<>(decisionAuthorizations));
+	}
+
+	/** Only authenticated host snapshots may extend this set without the finalized record. */
+	public boolean trustDecisionAuthorizations(Collection<String> incoming)
+	{
+		if (incoming == null || incoming.size() > MAX_DECISION_AUTHORIZATIONS)
+		{
+			throw new IllegalArgumentException("Invalid decision authorizations");
+		}
+		Set<String> merged = new LinkedHashSet<>(getDecisionAuthorizations());
+		for (String id : incoming)
+		{
+			if (id == null || id.length() != 44)
+			{
+				throw new IllegalArgumentException("Invalid decision commitment");
+			}
+			byte[] decoded = Base64.getDecoder().decode(id);
+			if (decoded.length != 32 || !Base64.getEncoder().encodeToString(decoded).equals(id))
+			{
+				throw new IllegalArgumentException("Invalid decision commitment");
+			}
+			merged.add(id);
+		}
+		if (merged.size() > MAX_DECISION_AUTHORIZATIONS)
+		{
+			throw new IllegalArgumentException("Too many decision authorizations");
+		}
+		boolean changed = !merged.equals(getDecisionAuthorizations());
+		decisionAuthorizations = merged;
+		return changed;
+	}
+
+	public Map<String, Long> getDecisionKeys()
+	{
+		return decisionKeys == null ? Collections.emptyMap()
+			: Collections.unmodifiableMap(new LinkedHashMap<>(decisionKeys));
+	}
+
+	public boolean trustDecisionKeys(Map<String, Long> incoming)
+	{
+		if (incoming == null || incoming.size() > MAX_DECISION_KEYS)
+		{
+			throw new IllegalArgumentException("Invalid decision key collection");
+		}
+		Map<String, Long> merged = new LinkedHashMap<>(getDecisionKeys());
+		for (Map.Entry<String, Long> entry : incoming.entrySet())
+		{
+			if (entry.getValue() == null || entry.getValue() <= 0L
+				|| !LootDecisionReceipt.isValidKeyId(entry.getKey(), entry.getValue())
+				|| (merged.containsKey(entry.getKey()) && !merged.get(entry.getKey()).equals(entry.getValue())))
+			{
+				throw new IllegalArgumentException("Invalid or conflicting decision key");
+			}
+			merged.put(entry.getKey(), entry.getValue());
+		}
+		if (merged.size() > MAX_DECISION_KEYS)
+		{
+			throw new IllegalArgumentException("Too many decision keys");
+		}
+		boolean changed = !merged.equals(getDecisionKeys());
+		decisionKeys = merged;
+		return changed;
 	}
 
 	public String getSessionId()
@@ -246,5 +402,10 @@ public final class LootshareSession
 	public List<LootProposal> getAcceptedProposals()
 	{
 		return Collections.unmodifiableList(acceptedProposals);
+	}
+
+	public List<LootProposal> getRejectedProposals()
+	{
+		return rejectedProposals == null ? Collections.emptyList() : Collections.unmodifiableList(rejectedProposals);
 	}
 }

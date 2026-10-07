@@ -289,6 +289,145 @@ public class LootshareEngineTest
 			pruning.enterParty(999L, "replacement", Instant.ofEpochSecond(999)));
 		assertEquals(LootshareEngine.MAX_SESSIONS, pruning.getHistory().size());
 	}
+	@Test public void completedPartyProposalsDoNotExhaustNewPartyCapacity()
+	{
+		LootshareEngine engine = new LootshareEngine();
+		engine.enterParty(77L, "first", Instant.EPOCH);
+		for (int i = 0; i < LootshareEngine.MAX_PROPOSALS; i++)
+		{
+			assertEquals(LootshareEngine.MutationResult.APPLIED, engine.addProposal(pending("limit-" + i, 77L, 1L, 1000L)));
+		}
+		engine.leaveParty(Instant.ofEpochSecond(1));
+		engine.enterParty(88L, "second", Instant.ofEpochSecond(2));
+		assertEquals(LootshareEngine.MutationResult.APPLIED, engine.addProposal(pending("new-party", 88L, 1L, 1000L)));
+	}
+
+
+	@Test
+	public void archivesAcceptedTransportEntriesWithoutLosingRosterOrReplay()
+	{
+		LootshareEngine engine = new LootshareEngine();
+		engine.enterParty(10L, "archive", Instant.EPOCH);
+		engine.updateHostState(1L, 1L, 0L, 1L);
+		for (int index = 0; index <= LootshareEngine.MAX_PROPOSALS; index++)
+		{
+			String id = "archived-" + index;
+			assertEquals(MutationResult.APPLIED, engine.addProposal(pending(id, 10L, 1L, 10L)));
+			assertEquals(MutationResult.APPLIED, engine.decide(id, 1L, LootProposalStatus.ACCEPTED,
+				Instant.ofEpochSecond(index), roster(1L, 2L)).getResult());
+		}
+		assertEquals(LootshareEngine.MAX_PROPOSALS + 1, engine.getProposalsForActiveParty().size());
+		assertEquals(2, engine.getProposal("archived-0").get().getParticipants().size());
+		assertEquals(MutationResult.DUPLICATE, engine.addProposal(pending("archived-0", 10L, 1L, 10L)));
+		LootshareEngine restored = new LootshareEngine();
+		restored.restore(engine.snapshot());
+		assertEquals(LootshareEngine.MAX_PROPOSALS + 1, restored.getProposalsForActiveParty().size());
+		assertEquals(10L * (LootshareEngine.MAX_PROPOSALS + 1),
+			new LootshareCalculator().calculate(restored.getActiveSession().get()).getTotalAcceptedValue());
+	}
+
+	@Test
+	public void mergesLegacyRejoinSegmentsWithTheirFrozenRosters()
+	{
+		LootshareSession first = new LootshareSession("first-segment", 10L, Instant.EPOCH);
+		first.setHostState(1L, 0L, 1L);
+		first.addAcceptedProposal(pending("first-drop", 10L, 1L, 90L).decide(
+			LootProposalStatus.ACCEPTED, Instant.ofEpochSecond(1), roster(1L, 2L)));
+		first.end(Instant.ofEpochSecond(2));
+		LootshareSession second = new LootshareSession("second-segment", 10L, Instant.ofEpochSecond(3));
+		second.setHostState(2L, 0L, 2L);
+		second.addAcceptedProposal(pending("second-drop", 10L, 2L, 60L).decide(
+			LootProposalStatus.ACCEPTED, Instant.ofEpochSecond(4), roster(1L, 2L, 3L)));
+		second.end(Instant.ofEpochSecond(5));
+		LootshareState state = new LootshareState();
+		state.setSessions(Arrays.asList(first, second));
+		LootshareEngine engine = new LootshareEngine();
+		engine.restore(state);
+		assertEquals(MutationResult.APPLIED, engine.enterParty(10L, "unused", Instant.ofEpochSecond(6)));
+		assertEquals(1, engine.getHistory().size());
+		assertEquals(2L, engine.getActiveHostMemberId());
+		assertEquals(150L, new LootshareCalculator().calculate(engine.getActiveSession().get()).getTotalAcceptedValue());
+		assertEquals(2, engine.getProposal("first-drop").get().getParticipants().size());
+		assertEquals(3, engine.getProposal("second-drop").get().getParticipants().size());
+		LootshareEngine restored = new LootshareEngine();
+		restored.restore(engine.snapshot());
+		assertEquals(150L, new LootshareCalculator().calculate(restored.getActiveSession().get()).getTotalAcceptedValue());
+	}
+
+	@Test
+	public void archivesRejectionsWithoutBlockingLaterApprovedLootOrReacceptingOldDrops()
+	{
+		LootshareEngine engine = new LootshareEngine();
+		engine.enterParty(10L, "rejections", Instant.EPOCH);
+		engine.updateHostState(1L, 1L, 0L, 1L);
+		for (int index = 0; index <= LootshareEngine.MAX_PROPOSALS; index++)
+		{
+			String id = "rejected-" + index;
+			engine.addProposal(pending(id, 10L, 1L, 10L));
+			assertEquals(MutationResult.APPLIED, engine.decide(id, 1L, LootProposalStatus.REJECTED,
+				Instant.ofEpochSecond(index), Collections.emptyList()).getResult());
+		}
+		assertEquals(MutationResult.APPLIED, engine.addProposal(pending("approved-later", 10L, 1L, 100L)));
+		assertEquals(MutationResult.APPLIED, engine.decide("approved-later", 1L, LootProposalStatus.ACCEPTED,
+			Instant.ofEpochSecond(3000), roster(1L, 2L)).getResult());
+		LootshareEngine restored = new LootshareEngine();
+		restored.restore(engine.snapshot());
+		assertEquals(LootProposalStatus.REJECTED, restored.getProposal("rejected-0").get().getStatus());
+		assertEquals(MutationResult.DUPLICATE, restored.addProposal(pending("rejected-0", 10L, 1L, 10L)));
+		assertEquals(MutationResult.CONFLICT, restored.decide("rejected-0", 1L, LootProposalStatus.ACCEPTED,
+			Instant.ofEpochSecond(4000), roster(1L, 2L)).getResult());
+		assertEquals(LootshareEngine.MAX_PROPOSALS + 2, restored.getProposalsForActiveParty().size());
+		assertEquals(100L, new LootshareCalculator().calculate(restored.getActiveSession().get()).getTotalAcceptedValue());
+	}
+
+	@Test
+	public void invalidRejoinAndOverflowingLegacyMergePreserveTheCurrentParty()
+	{
+		LootshareSession closed = new LootshareSession("future-ledger", 10L, Instant.ofEpochSecond(5));
+		closed.end(Instant.ofEpochSecond(6));
+		LootshareSession current = new LootshareSession("current", 20L, Instant.EPOCH);
+		LootshareState state = new LootshareState();
+		state.setSessions(Arrays.asList(closed, current));
+		state.setActiveSessionId("current");
+		LootshareEngine engine = new LootshareEngine();
+		engine.restore(state);
+		assertEquals(MutationResult.INVALID, engine.enterParty(10L, "unused", Instant.ofEpochSecond(4)));
+		assertEquals(20L, engine.getActivePartyId());
+		assertTrue(engine.getActiveSession().get().isActive());
+
+		LootshareSession first = new LootshareSession("overflow-first", 30L, Instant.EPOCH);
+		first.addAcceptedProposal(pending("max-value", 30L, 1L, Long.MAX_VALUE).decide(
+			LootProposalStatus.ACCEPTED, Instant.EPOCH, roster(1L)));
+		first.end(Instant.ofEpochSecond(1));
+		LootshareSession second = new LootshareSession("overflow-second", 30L, Instant.ofEpochSecond(2));
+		second.addAcceptedProposal(pending("extra-value", 30L, 1L, 1L).decide(
+			LootProposalStatus.ACCEPTED, Instant.ofEpochSecond(3), roster(1L)));
+		second.end(Instant.ofEpochSecond(4));
+		state.setSessions(Arrays.asList(first, second, current));
+		engine.restore(state);
+		assertEquals(MutationResult.INVALID, engine.enterParty(30L, "unused", Instant.ofEpochSecond(7)));
+		assertEquals(20L, engine.getActivePartyId());
+		assertEquals(3, engine.getHistory().size());
+	}
+
+	@Test
+	public void restoresLegacyTransportRejectionsIntoTheLedger()
+	{
+		LootshareSession legacy = new LootshareSession("schema-four", 10L, Instant.EPOCH);
+		legacy.setHostState(1L, 0L, 1L);
+		LootProposal rejected = pending("legacy-rejection", 10L, 1L, 100L).decide(
+			LootProposalStatus.REJECTED, Instant.ofEpochSecond(1), Collections.emptyList());
+		LootshareState state = new LootshareState();
+		state.setSchemaVersion(4);
+		state.setSessions(Collections.singletonList(legacy));
+		state.setProposals(Collections.singletonList(rejected));
+		state.setActiveSessionId("schema-four");
+		LootshareEngine engine = new LootshareEngine();
+		engine.restore(state);
+		assertEquals(1, engine.getActiveSession().get().getRejectedProposals().size());
+		assertEquals("legacy-rejection", engine.getActiveSession().get().getRejectedProposals().get(0).getProposalId());
+		assertEquals(MutationResult.DUPLICATE, engine.addProposal(pending("legacy-rejection", 10L, 1L, 100L)));
+	}
 
 	private static LootProposal pending(String id, long partyId, long ownerId, long value)
 	{

@@ -658,7 +658,8 @@ public class UiController implements PanelActions
 		List<LootItem> items = new ArrayList<>(itemAggregates.size());
 		for (ItemAggregate aggregate : itemAggregates.values())
 		{
-			String itemName = itemNames.computeIfAbsent(aggregate.itemId, this::resolveItemName);
+			String itemName = aggregate.itemId == 0 ? "Manual GP"
+				: itemNames.computeIfAbsent(aggregate.itemId, this::resolveItemName);
 			items.add(new LootItem(aggregate.itemId, itemName, aggregate.quantity, aggregate.totalValue));
 		}
 		items.sort(Comparator.comparingLong(LootItem::getTotalValue).reversed()

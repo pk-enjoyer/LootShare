@@ -6,6 +6,7 @@
 package com.communitylootshare.party;
 
 import com.communitylootshare.domain.LootProposal;
+import com.communitylootshare.domain.LootDecisionReceipt;
 import com.communitylootshare.domain.LootProposalStatus;
 import com.communitylootshare.domain.LootshareParticipant;
 import com.communitylootshare.domain.SharedLootEvent;
@@ -25,6 +26,7 @@ public class DecisionMessage extends PartyMemberMessage
 	private String decision;
 	private long decidedAtEpochMilli;
 	private List<ParticipantPayload> participants = new ArrayList<>();
+	private LootDecisionReceipt receipt;
 
 	public DecisionMessage()
 	{
@@ -40,6 +42,7 @@ public class DecisionMessage extends PartyMemberMessage
 		this.proposalId = proposal.getProposalId();
 		this.decision = proposal.getStatus().name();
 		this.decidedAtEpochMilli = proposal.getDecidedAt().toEpochMilli();
+		this.receipt = proposal.getDecisionReceipt();
 		for (LootshareParticipant participant : proposal.getParticipants())
 		{
 			participants.add(new ParticipantPayload(participant.getMemberId(), participant.getDisplayName()));
@@ -76,7 +79,8 @@ public class DecisionMessage extends PartyMemberMessage
 				return Optional.empty();
 			}
 			return Optional.of(new DecodedDecision(proposalId.trim(), status,
-				Instant.ofEpochMilli(decidedAtEpochMilli), roster));
+				Instant.ofEpochMilli(decidedAtEpochMilli), roster,
+				receipt == null ? null : receipt.validatedCopy()));
 		}
 		catch (RuntimeException ignored)
 		{
@@ -136,14 +140,16 @@ public class DecisionMessage extends PartyMemberMessage
 		private final LootProposalStatus status;
 		private final Instant decidedAt;
 		private final List<LootshareParticipant> participants;
+		private final LootDecisionReceipt receipt;
 
 		private DecodedDecision(String proposalId, LootProposalStatus status, Instant decidedAt,
-		                        List<LootshareParticipant> participants)
+		                        List<LootshareParticipant> participants, LootDecisionReceipt receipt)
 		{
 			this.proposalId = proposalId;
 			this.status = status;
 			this.decidedAt = decidedAt;
 			this.participants = Collections.unmodifiableList(new ArrayList<>(participants));
+			this.receipt = receipt;
 		}
 
 		public String getProposalId()
@@ -164,6 +170,11 @@ public class DecisionMessage extends PartyMemberMessage
 		public List<LootshareParticipant> getParticipants()
 		{
 			return participants;
+		}
+
+		public LootDecisionReceipt getReceipt()
+		{
+			return receipt;
 		}
 	}
 }

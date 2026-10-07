@@ -33,7 +33,14 @@ public class LootCaptureService
 	private final ItemManager itemManager;
 	private final Supplier<String> proposalIdSupplier;
 	private long lastCaptureTick = Long.MIN_VALUE;
-	private CaptureFingerprint lastFingerprint;
+	private final Map<CaptureFingerprint, int[]> occurrences = new LinkedHashMap<>();
+
+	public enum CaptureOrigin
+	{
+		SERVER_NPC,
+		LOOT_RECEIVED,
+		INDEPENDENT
+	}
 
 	@Inject
 	public LootCaptureService(ItemManager itemManager)
@@ -75,9 +82,18 @@ public class LootCaptureService
 	                                                      String recipient, Instant capturedAt,
 	                                                      long captureTick, LootValueBasis lootValueBasis)
 	{
+		return capture(sourceLabel, stacks, recipient, capturedAt, captureTick, lootValueBasis,
+			CaptureOrigin.LOOT_RECEIVED);
+	}
+
+	public synchronized Optional<SharedLootEvent> capture(String sourceLabel, Collection<ItemStack> stacks,
+	                                                      String recipient, Instant capturedAt,
+	                                                      long captureTick, LootValueBasis lootValueBasis,
+	                                                      CaptureOrigin origin)
+	{
 		String normalizedSourceLabel = normalizeSourceLabel(sourceLabel);
 		if (normalizedSourceLabel == null || recipient == null || recipient.trim().isEmpty()
-			|| capturedAt == null || lootValueBasis == null)
+			|| capturedAt == null || lootValueBasis == null || origin == null)
 		{
 			return Optional.empty();
 		}
@@ -139,20 +155,30 @@ public class LootCaptureService
 		{
 			return Optional.empty();
 		}
-		CaptureFingerprint fingerprint = new CaptureFingerprint(event.getRecipient(), event.getSourceLabel(), event.getItems());
-		if (captureTick == lastCaptureTick && fingerprint.equals(lastFingerprint))
+		if (captureTick != lastCaptureTick)
 		{
-			return Optional.empty();
+			occurrences.clear();
+			lastCaptureTick = captureTick;
 		}
-		lastCaptureTick = captureTick;
-		lastFingerprint = fingerprint;
+		if (origin != CaptureOrigin.INDEPENDENT)
+		{
+			CaptureFingerprint fingerprint = new CaptureFingerprint(event.getRecipient(), event.getSourceLabel(), event.getItems());
+			int[] counts = occurrences.computeIfAbsent(fingerprint, ignored -> new int[2]);
+			int ownIndex = origin == CaptureOrigin.SERVER_NPC ? 0 : 1;
+			// Each origin reports distinct occurrences. Pair only one delivery from each origin,
+			// including interleaved fingerprints and either subscriber order.
+			if (++counts[ownIndex] <= counts[1 - ownIndex])
+			{
+				return Optional.empty();
+			}
+		}
 		return Optional.of(event);
 	}
 
 	public synchronized void resetDeduplication()
 	{
 		lastCaptureTick = Long.MIN_VALUE;
-		lastFingerprint = null;
+		occurrences.clear();
 	}
 
 	private long resolveUnitPrice(int canonicalId, int pricingId, LootValueBasis lootValueBasis)

@@ -38,11 +38,18 @@ The active Community Lootshare implementation provides:
 - automatic host decisions for every capture: approved members' loot is accepted
   with the currently approved roster frozen into it, while pending or excluded
   members' loot is rejected and hidden;
-- Party-scoped sessions, duplicate/conflict handling, and late-join state sync;
+- Party-scoped ledgers that resume on rejoin, duplicate/conflict handling, and
+  late-join state sync; guests replay signed finalized decisions and their own
+  pending contributions when a host recovers; original split rosters stay frozen;
 - exact integer split calculation, deterministic remainder assignment, and
   payer-to-receiver settlement transfers;
 - asynchronous, atomic, schema-versioned JSON persistence under
   `~/.runelite/community-lootshare/`, scoped to the active RuneLite profile;
+  schema-7 snapshots use gzip at a stable profile-ID path, so renaming a profile
+  keeps its history. A single legacy name-based file migrates with its original
+  preserved as a backup. Invalid records, ambiguous migrations, and unsupported
+  schemas remain read-only. Writes are bounded to 5 MiB compressed and 64 MiB
+  expanded, and failed writes retain the last good file;
 - an active Community Lootshare sidebar with Party controls, including rejoining
   the previous Party, first-member host election, right-click host transfer, a
   collapsible effective-host-settings summary, eligibility badges/actions,
@@ -84,7 +91,79 @@ The Party host can add a manual GP contribution to any approved member. The
 host may enable **Allow member manual GP** to let approved members add GP only
 to themselves. These contributions use the same Party-synchronised proposal,
 settlement, and persisted-history paths as captured loot; OSRS chat commands
-and chat value parsing are not supported.
+and chat value parsing are not supported. Manual contributions display as
+**Manual GP** with a coin icon and their captured GP value.
+
+## Host recovery
+
+Use the same updated plugin version on every Party client. Host snapshots now use
+protocol 6; older host protocols 3, 4, and 5 remain readable, but older clients cannot
+participate in the new recovery exchange.
+
+A restarted or newly transferred host requests peer history and briefly holds new
+decisions until peers finish replying, with a three-second fallback. Peers send
+complete finalized contributions with host signatures covering the original value,
+owner, timestamp, status, and roster. Recovery verifies the signature against
+previously trusted host keys and requires a SHA-256 commitment to the exact decision
+in an authenticated host snapshot. This prevents former hosts from signing new,
+backdated contributions after transferring authority. Decision timestamps use the
+same millisecond precision on disk and over Party. Late committed signed records
+can still recover after the fallback if they do not conflict with a local decision.
+Older key-only snapshots cannot authorize unseen peer history; retained local
+records acquire commitments when loaded and synchronized by an authorized host.
+
+The private signing identity is stored in a separate `.signer` file beside the
+profile ledger and loaded by the background profile task. Public host authority and
+key bindings and decision commitments are also cached in RuneLite configuration, allowing a missing or older
+ledger to recover without silently replacing host authority. Keep the signing file
+when backing up a profile. A corrupt signing file is preserved and makes the profile
+read-only. Unsigned legacy history can only be confirmed by the authenticated first
+Party member during recovery and must match a committed decision. Recovery cannot
+reconstruct history if no peer retains
+it or no trusted authority remains.
+
+## Manual validation of the edge-case fixes
+
+Automated tests cover invalid-file preservation and message ordering. The remaining
+live-client check uses ordinary user actions; no game input is automated:
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Game as OSRS / Jagex
+    participant RL as RuneLite
+    participant Host as Host plugin
+    participant Peer as Peer plugin
+    User->>Game: Obtain an enabled loot drop
+    Game->>RL: Loot update
+    RL->>Host: Loot event
+    Host->>Host: Freeze approved roster and sign decision
+    Host->>Peer: Proposal, host policy, and decision
+    Peer->>Peer: Store original decision and show balances
+    User->>RL: Restart host plugin or transfer host
+    RL->>Host: Plugin / Party lifecycle event
+    Host->>Peer: Request synchronization
+    Peer->>Host: Signed finalized history and completion
+    Host->>Host: Verify history and preserve frozen splits
+    Host->>User: Restored sidebar totals and settlement
+```
+
+1. With two updated clients, create a Party, approve both members, and record an
+   ordinary drop plus a manual GP contribution. Both sidebars should agree; manual
+   GP should show its label, coin icon, and actual amount.
+2. Exclude a member after an accepted contribution, then restart the host plugin
+   or transfer host. Existing balances and original rosters should stay unchanged;
+   new contributions should follow current eligibility after recovery finishes.
+3. Leave and rejoin as a guest after a host transfer, including after the old host
+   leaves. The guest should recognize the current host and receive its ledger.
+4. Rename the RuneLite profile, restart the plugin, and check that totals persist.
+5. Restart the host while another client is unavailable. After the short recovery
+   fallback, new eligible contributions should finalize normally. Disable the
+   plugin during that wait and verify it sends no later decisions.
+
+Login to the development client using RuneLite's
+[Using Jagex Accounts](https://github.com/runelite/runelite/wiki/Using-Jagex-Accounts)
+instructions. In-game confirmation remains a manual step.
 
 ## Development
 

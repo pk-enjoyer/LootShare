@@ -10,7 +10,7 @@ import java.util.List;
 
 public class LootshareState
 {
-	public static final int CURRENT_SCHEMA_VERSION = 4;
+	public static final int CURRENT_SCHEMA_VERSION = 7;
 
 	private int schemaVersion = CURRENT_SCHEMA_VERSION;
 	private String activeSessionId;

@@ -17,11 +17,16 @@ import com.communitylootshare.domain.SharedLootEvent;
 import com.communitylootshare.domain.SharedLootItem;
 import com.communitylootshare.sessions.LootshareEngine;
 import java.io.File;
+import java.io.RandomAccessFile;
+import com.communitylootshare.utils.InstantTypeAdapter;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.Collections;
+import java.util.ArrayList;
+import java.util.List;
+import com.communitylootshare.domain.LootshareSession;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
@@ -184,6 +189,74 @@ public class LootshareStorageTest
 		{
 			// Expected.
 		}
+	}
+	@Test public void largeValidSavedHistoryRemainsReadable() throws Exception
+	{
+		LootshareSession session = new LootshareSession("large", 77L, Instant.EPOCH);
+		List<SharedLootItem> items = new ArrayList<>();
+		for (int i = 0; i < SharedLootEvent.MAX_ITEMS; i++) items.add(new SharedLootItem(i, i, 1L, 50L));
+		List<LootProposal> proposals = new ArrayList<>();
+		for (int i = 0; i < 400; i++)
+		{
+			LootProposal proposal = LootProposal.pending(77L, 1L, new SharedLootEvent("large-" + i,
+				"Alice", "Boss", Instant.EPOCH, items)).decide(LootProposalStatus.ACCEPTED,
+				Instant.ofEpochSecond(i), Collections.singletonList(new LootshareParticipant(1L, "Alice")));
+			proposals.add(proposal);
+			session.addAcceptedProposal(proposal);
+		}
+		LootshareState state = new LootshareState();
+		state.setProposals(proposals);
+		state.setSessions(Collections.singletonList(session));
+		state.setActiveSessionId("large");
+		File file = new File(temporaryFolder.getRoot(), "history.json");
+		LootshareStorage storage = new LootshareStorage(file, new Gson());
+		assertTrue(storage.save(file, state));
+		assertTrue(storage.load(file).isWritable());
+		assertEquals(400, storage.load(file).getState().getSessions().get(0).getAcceptedProposals().size());
+		File legacy = new File(temporaryFolder.getRoot(), "legacy-large.json");
+		Gson legacyGson = gson.newBuilder().registerTypeAdapter(Instant.class, new InstantTypeAdapter()).create();
+		Files.write(legacy.toPath(), legacyGson.toJson(state).getBytes(StandardCharsets.UTF_8));
+		assertTrue(legacy.length() > LootshareStorage.MAX_FILE_BYTES);
+		assertTrue(storage.load(legacy).isWritable());
+		assertEquals(400, storage.load(legacy).getState().getSessions().get(0).getAcceptedProposals().size());
+	}
+
+
+	@Test
+	public void rejectsOversizedPlainAndCompressedFilesBeforeParsing() throws Exception
+	{
+		File plain = temporaryFolder.newFile("oversized-plain.json");
+		try (RandomAccessFile output = new RandomAccessFile(plain, "rw"))
+		{
+			output.setLength(LootshareStorage.MAX_EXPANDED_BYTES + 1L);
+		}
+		File compressed = temporaryFolder.newFile("oversized-compressed.json");
+		try (RandomAccessFile output = new RandomAccessFile(compressed, "rw"))
+		{
+			output.write(new byte[]{0x1f, (byte) 0x8b});
+			output.setLength(LootshareStorage.MAX_FILE_BYTES + 1L);
+		}
+		LootshareStorage storage = new LootshareStorage(plain, gson);
+		assertFalse(storage.load(plain).isWritable());
+		assertFalse(storage.load(compressed).isWritable());
+	}
+
+	@Test
+	public void oversizedSavePreservesLastGoodFileAndRemovesTemporaryFiles() throws Exception
+	{
+		File file = new File(temporaryFolder.getRoot(), "guarded.json");
+		LootshareStorage storage = new LootshareStorage(file, gson);
+		assertTrue(storage.save(file, acceptedEngine().snapshot()));
+		byte[] previous = Files.readAllBytes(file.toPath());
+		List<SharedLootItem> items = new ArrayList<>();
+		for (int i = 0; i < SharedLootEvent.MAX_ITEMS; i++) items.add(new SharedLootItem(i + 1, i + 1, 1L, 50L));
+		LootProposal proposal = LootProposal.pending(10L, 1L, new SharedLootEvent("oversized", "Alice", "Boss", Instant.EPOCH, items));
+		LootshareState excessive = new LootshareState();
+		excessive.setProposals(Collections.nCopies(10000, proposal));
+		assertFalse(storage.save(file, excessive));
+		org.junit.Assert.assertArrayEquals(previous, Files.readAllBytes(file.toPath()));
+		assertEquals(1, temporaryFolder.getRoot().listFiles().length);
+		assertTrue(storage.load(file).isWritable());
 	}
 
 	private static LootshareEngine acceptedEngine()

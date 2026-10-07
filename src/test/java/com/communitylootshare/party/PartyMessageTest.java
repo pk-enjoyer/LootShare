@@ -227,6 +227,26 @@ public class PartyMessageTest
 		expectIllegal(() -> new DecisionMessage(pending("pending")));
 	}
 
+	@Test
+	public void manualGpTimestampMatchesWirePrecisionAndClampedHostDecision()
+	{
+		SharedLootEvent event = new SharedLootEvent("manual-gp-precision", "Alice", "Manual GP",
+			Instant.parse("2026-10-06T12:00:00.123456789Z"),
+			Collections.singletonList(new SharedLootItem(0, 0, 1L, 1000L)));
+		LootProposal local = LootProposal.pending(99L, 7L, event);
+		ProposalMessage wire = new ProposalMessage(local, true);
+		wire.setMemberId(7L);
+		LootProposal decoded = wire.decode(99L).get();
+		assertTrue(local.hasSameIdentity(decoded));
+		LootProposal decided = decoded.decide(LootProposalStatus.ACCEPTED,
+			decoded.getEvent().getCapturedAt(), Collections.singletonList(new LootshareParticipant(7L, "Alice")));
+		DecisionMessage decision = new DecisionMessage(decided);
+		decision.setMemberId(8L);
+		DecisionMessage.DecodedDecision host = decision.decode().get();
+		assertEquals(LootProposalStatus.ACCEPTED,
+			local.decide(host.getStatus(), host.getDecidedAt(), host.getParticipants()).getStatus());
+	}
+
 	private ProposalMessage proposal(String json, long memberId)
 	{
 		ProposalMessage message = gson.fromJson(json, ProposalMessage.class);

@@ -8,6 +8,7 @@ package com.communitylootshare.integration;
 import com.google.gson.Gson;
 import com.communitylootshare.LootshareConfig;
 import com.communitylootshare.capture.LootCaptureService;
+import com.communitylootshare.capture.LootCaptureService.CaptureOrigin;
 import com.communitylootshare.domain.LootProposal;
 import com.communitylootshare.domain.LootProposalStatus;
 import com.communitylootshare.domain.LootshareCalculation;
@@ -40,6 +41,8 @@ import net.runelite.api.events.ChatMessage;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.events.ServerNpcLoot;
 import net.runelite.client.game.ItemStack;
+import net.runelite.client.game.ItemManager;
+import net.runelite.api.gameval.ItemID;
 import net.runelite.client.party.PartyMember;
 import net.runelite.client.party.PartyService;
 import net.runelite.client.party.events.UserPart;
@@ -142,7 +145,7 @@ public class LootshareControllerTest
 		when(received.getItems()).thenReturn(stacks);
 		SharedLootEvent event = event("local", "Alice", 200L);
 		when(captureService.capture(eq("Boss"), eq(stacks), eq("Alice"), any(Instant.class), eq(42L),
-			eq(LootValueBasis.GRAND_EXCHANGE)))
+			eq(LootValueBasis.GRAND_EXCHANGE), any(CaptureOrigin.class)))
 			.thenReturn(Optional.of(event));
 
 		controller.onLootReceived(received);
@@ -194,14 +197,14 @@ public class LootshareControllerTest
 		ServerNpcLoot received = new ServerNpcLoot(composition, stacks);
 		SharedLootEvent event = event("server-npc", "Alice", 200L);
 		when(captureService.capture(eq("Boss"), eq(stacks), eq("Alice"), any(Instant.class), eq(42L),
-			eq(LootValueBasis.GRAND_EXCHANGE)))
+			eq(LootValueBasis.GRAND_EXCHANGE), any(CaptureOrigin.class)))
 			.thenReturn(Optional.of(event));
 
 		controller.onServerNpcLoot(received);
 
 		assertTrue(engine.getProposal("server-npc").isPresent());
 		verify(captureService).capture(eq("Boss"), eq(stacks), eq("Alice"), any(Instant.class), eq(42L),
-			eq(LootValueBasis.GRAND_EXCHANGE));
+			eq(LootValueBasis.GRAND_EXCHANGE), any(CaptureOrigin.class));
 		verify(partyService).send(any(ProposalMessage.class));
 	}
 
@@ -219,7 +222,7 @@ public class LootshareControllerTest
 			Collections.singletonList(new ItemStack(24777, 1))));
 
 		verify(captureService, never()).capture(any(String.class), any(), any(String.class),
-			any(Instant.class), anyLong(), any(LootValueBasis.class));
+			any(Instant.class), anyLong(), any(LootValueBasis.class), any(CaptureOrigin.class));
 	}
 
 	@Test
@@ -231,7 +234,7 @@ public class LootshareControllerTest
 		when(received.getItems()).thenReturn(stacks);
 		SharedLootEvent lowValueEvent = event("low-value", "Alice", 50L);
 		when(captureService.capture(eq("Goblin"), eq(stacks), eq("Alice"), any(Instant.class), eq(42L),
-			eq(LootValueBasis.GRAND_EXCHANGE)))
+			eq(LootValueBasis.GRAND_EXCHANGE), any(CaptureOrigin.class)))
 			.thenReturn(Optional.of(lowValueEvent));
 
 		controller.onLootReceived(received);
@@ -284,6 +287,7 @@ public class LootshareControllerTest
 	{
 		Instant transition = engine.getActiveSession().get().getStartedAt().plusSeconds(1L);
 		assertEquals(MutationResult.APPLIED, engine.leaveParty(transition));
+		engine.restore(null);
 		assertEquals(MutationResult.APPLIED, engine.enterParty(PARTY_ID, "fresh", transition));
 		HostMessage remoteClaim = new HostMessage(2L, 100L, 1L);
 		remoteClaim.setMemberId(2L);
@@ -335,7 +339,7 @@ public class LootshareControllerTest
 		when(playerLoot.getItems()).thenReturn(Collections.singletonList(new ItemStack(100, 1)));
 		controller.onLootReceived(playerLoot);
 		verify(captureService, never()).capture(any(String.class), any(), any(String.class),
-			any(Instant.class), anyLong(), any(LootValueBasis.class));
+			any(Instant.class), anyLong(), any(LootValueBasis.class), any(CaptureOrigin.class));
 
 		LootReceived eventLoot = mock(LootReceived.class);
 		List<ItemStack> stacks = Collections.singletonList(new ItemStack(101, 1));
@@ -343,13 +347,13 @@ public class LootshareControllerTest
 		when(eventLoot.getName()).thenReturn("Raid reward");
 		when(eventLoot.getItems()).thenReturn(stacks);
 		when(captureService.capture(eq("Raid reward"), eq(stacks), eq("Alice"), any(Instant.class), eq(42L),
-			eq(LootValueBasis.HIGH_ALCHEMY))).thenReturn(Optional.of(event("host-event", "Alice", 300L)));
+			eq(LootValueBasis.HIGH_ALCHEMY), any(CaptureOrigin.class))).thenReturn(Optional.of(event("host-event", "Alice", 300L)));
 
 		controller.onLootReceived(eventLoot);
 
 		assertTrue(engine.getProposal("host-event").isPresent());
 		verify(captureService).capture(eq("Raid reward"), eq(stacks), eq("Alice"), any(Instant.class), eq(42L),
-			eq(LootValueBasis.HIGH_ALCHEMY));
+			eq(LootValueBasis.HIGH_ALCHEMY), any(CaptureOrigin.class));
 	}
 
 	@Test
@@ -366,7 +370,7 @@ public class LootshareControllerTest
 
 		assertTrue(!controller.getActiveHostSettings().isPresent());
 		verify(captureService, never()).capture(any(String.class), any(), any(String.class),
-			any(Instant.class), anyLong(), any(LootValueBasis.class));
+			any(Instant.class), anyLong(), any(LootValueBasis.class), any(CaptureOrigin.class));
 	}
 
 	@Test
@@ -414,7 +418,7 @@ public class LootshareControllerTest
 		when(received.getName()).thenReturn("Boss");
 		when(received.getItems()).thenReturn(stacks);
 		when(captureService.capture(eq("Boss"), eq(stacks), eq("Alice"), any(Instant.class), eq(42L),
-			eq(LootValueBasis.GRAND_EXCHANGE))).thenReturn(Optional.of(event("offline", "Alice", 200L)));
+			eq(LootValueBasis.GRAND_EXCHANGE), any(CaptureOrigin.class))).thenReturn(Optional.of(event("offline", "Alice", 200L)));
 
 		controller.onLootReceived(received);
 		assertEquals(MutationResult.DUPLICATE, controller.approveProposal("offline"));
@@ -499,6 +503,238 @@ public class LootshareControllerTest
 
 		assertEquals(1, changes.get());
 		assertTrue(controller.isReady());
+	}
+	@Test
+	public void rejoinPreservesAlreadyAcceptedLootInActiveCalculation()
+	{
+		assertEquals(MutationResult.APPLIED, controller.addManualGp(1L, 1000L));
+		LootProposal accepted = engine.getActiveSession().get().getAcceptedProposals().get(0);
+		assertEquals(1000L, controller.getActiveCalculation().getTotalAcceptedValue());
+		assertEquals(MutationResult.APPLIED, controller.transferHost(2L));
+		when(partyService.isInParty()).thenReturn(false);
+		controller.onPartyChanged(null);
+		when(partyService.isInParty()).thenReturn(true);
+		when(partyService.getMembers()).thenReturn(Arrays.asList(remoteMember, localMember));
+		controller.onPartyChanged(new net.runelite.client.events.PartyChanged("party-pass", PARTY_ID));
+		HostMessage liveHost = new HostMessage(2L, 100L, 3L);
+		liveHost.setMemberId(2L);
+		controller.onHostMessage(liveHost);
+		ProposalMessage replay = new ProposalMessage(accepted);
+		replay.setMemberId(2L);
+		controller.onProposalMessage(replay);
+		DecisionMessage decision = new DecisionMessage(accepted);
+		decision.setMemberId(2L);
+		controller.onDecisionMessage(decision);
+		assertEquals(LootProposalStatus.ACCEPTED, engine.getProposal(accepted.getProposalId()).get().getStatus());
+		assertEquals(1000L, controller.getActiveCalculation().getTotalAcceptedValue());
+		assertEquals(1000L, new LootshareCalculator().calculate(engine.getHistory().get(0)).getTotalAcceptedValue());
+	}
+
+	@Test
+	public void rejectsNonFirstMemberInitialHostClaimAtHigherRevision()
+	{
+		Instant transition = engine.getActiveSession().get().getStartedAt().plusSeconds(1);
+		engine.leaveParty(transition);
+		engine.restore(null);
+		engine.enterParty(PARTY_ID, "review-fresh", transition);
+		HostMessage claim = new HostMessage(2L, 100L, 2L);
+		claim.setMemberId(2L);
+		controller.onHostMessage(claim);
+		assertEquals(0L, controller.getActiveHostMemberId());
+	}
+
+	@Test
+	public void rejectsUnmarkedSyntheticManualGpWhenGuestPolicyDisallowsIt()
+	{
+		controller.setMemberApproved(2L, true);
+		assertTrue(!controller.getActiveHostSettings().get().isAllowMemberManualGp());
+		SharedLootEvent event = new SharedLootEvent("review-unmarked-manual", "Bob", "Manual GP",
+			Instant.EPOCH, Collections.singletonList(new SharedLootItem(0, 0, 1L, 1000L)));
+		ProposalMessage message = new ProposalMessage(LootProposal.pending(PARTY_ID, 2L, event), false);
+		message = new Gson().fromJson(new Gson().toJson(message).replace("\"manualGp\":true", "\"manualGp\":false"), ProposalMessage.class);
+		message.setMemberId(2L);
+		controller.onProposalMessage(message);
+		assertTrue(!engine.getProposal(event.getProposalId()).isPresent());
+		assertEquals(0L, controller.getActiveCalculation().getTotalAcceptedValue());
+	}
+
+	@Test
+	public void guestReplaysPendingLootToHostRequestingSync()
+	{
+		assertEquals(MutationResult.APPLIED, controller.transferHost(2L));
+		assertEquals(MutationResult.APPLIED, engine.addProposal(
+			LootProposal.pending(PARTY_ID, 1L, event("review-missed-by-host", "Alice", 1000L))));
+		clearInvocations(partyService);
+		net.runelite.client.party.messages.UserSync hostRequest = new net.runelite.client.party.messages.UserSync();
+		hostRequest.setMemberId(2L);
+		controller.onUserSync(hostRequest);
+		verify(partyService).send(any(ProposalMessage.class));
+		assertEquals(1, engine.getPendingOwnedBy(1L).size());
+	}
+
+	@Test
+	public void freshGuestAuthenticatesTransferredHostThroughFirstMemberConfirmation()
+	{
+		PartyMember guest = member(3L, "Charlie");
+		when(partyService.getLocalMember()).thenReturn(guest);
+		when(partyService.getMemberById(3L)).thenReturn(guest);
+		when(partyService.getMembers()).thenReturn(Arrays.asList(localMember, remoteMember, guest));
+		engine.restore(null);
+		controller.onPartyChanged(new net.runelite.client.events.PartyChanged("party-pass", PARTY_ID));
+		clearInvocations(partyService);
+		HostMessage announcement = new HostMessage(2L, 100L, 2L);
+		announcement.setMemberId(2L);
+		controller.onHostMessage(announcement);
+		assertEquals(0L, controller.getActiveHostMemberId());
+		HostMessage confirmation = new HostMessage(2L, 100L, 2L);
+		confirmation.setMemberId(1L);
+		controller.onHostMessage(confirmation);
+		assertEquals(2L, controller.getActiveHostMemberId());
+		assertTrue(controller.getActiveHostSettings().isPresent());
+		verify(partyService).send(any(net.runelite.client.party.messages.UserSync.class));
+	}
+
+	@Test
+	public void firstMemberConfirmsTransferredHostToLateJoiners()
+	{
+		controller.transferHost(2L);
+		PartyMember guest = member(3L, "Charlie");
+		when(partyService.getMemberById(3L)).thenReturn(guest);
+		net.runelite.client.party.messages.UserSync request = new net.runelite.client.party.messages.UserSync();
+		request.setMemberId(3L);
+		clearInvocations(partyService);
+		controller.onUserSync(request);
+		ArgumentCaptor<HostMessage> confirmation = ArgumentCaptor.forClass(HostMessage.class);
+		verify(partyService).send(confirmation.capture());
+		assertEquals(2L, confirmation.getValue().getHostMemberId());
+		assertEquals(2L, confirmation.getValue().getRevision());
+	}
+
+	@Test
+	public void unsynchronizedGuestCannotReplaceKnownHostWithHigherSelfClaim()
+	{
+		controller.transferHost(2L);
+		PartyMember guest = member(3L, "Charlie");
+		when(partyService.getMemberById(3L)).thenReturn(guest);
+		when(partyService.getMembers()).thenReturn(Arrays.asList(localMember, remoteMember, guest));
+		controller.onPartyChanged(new net.runelite.client.events.PartyChanged("party-pass", PARTY_ID));
+		HostMessage forged = new HostMessage(3L, 0L, 99L);
+		forged.setMemberId(3L);
+		controller.onHostMessage(forged);
+		assertEquals(2L, controller.getActiveHostMemberId());
+		assertEquals(2L, engine.getActiveHostRevision());
+	}
+
+	@Test
+	public void hostReplayPreservesManualGpForDepartedOwners()
+	{
+		controller.transferHost(2L);
+		SharedLootEvent historical = new SharedLootEvent("manual-gp-departed", "Departed", "Manual GP",
+			Instant.EPOCH, Collections.singletonList(new SharedLootItem(0, 0, 1L, 1000L)));
+		LootProposal accepted = LootProposal.pending(PARTY_ID, 4L, historical).decide(
+			LootProposalStatus.ACCEPTED, Instant.ofEpochSecond(1),
+			Arrays.asList(new LootshareParticipant(4L, "Departed"), new LootshareParticipant(2L, "Bob")));
+		ProposalMessage replay = new ProposalMessage(accepted);
+		assertTrue(replay.isManualGp());
+		replay.setMemberId(2L);
+		controller.onProposalMessage(replay);
+		DecisionMessage decision = new DecisionMessage(accepted);
+		decision.setMemberId(2L);
+		controller.onDecisionMessage(decision);
+		assertEquals(1000L, controller.getActiveCalculation().getTotalAcceptedValue());
+		assertEquals(2, engine.getProposal(historical.getProposalId()).get().getParticipants().size());
+	}
+
+	@Test
+	public void enabledGuestManualGpRoundTripsAndIsReplayedWithItsKind()
+	{
+		controller.transferHost(2L);
+		LootshareSettings policy = new LootshareSettings(0L, LootValueBasis.GRAND_EXCHANGE,
+			true, true, true, true, true, false, true);
+		java.util.Map<Long, MemberApprovalStatus> approvals = new java.util.LinkedHashMap<>();
+		approvals.put(1L, MemberApprovalStatus.APPROVED);
+		approvals.put(2L, MemberApprovalStatus.APPROVED);
+		HostMessage host = new HostMessage(2L, policy, 3L, approvals);
+		host.setMemberId(2L);
+		controller.onHostMessage(host);
+		clearInvocations(partyService);
+		assertEquals(MutationResult.APPLIED, controller.addManualGp(1L, 1000L));
+		LootProposal pending = engine.getPendingOwnedBy(1L).get(0);
+		clearInvocations(partyService);
+		net.runelite.client.party.messages.UserSync request = new net.runelite.client.party.messages.UserSync();
+		request.setMemberId(2L);
+		controller.onUserSync(request);
+		verify(partyService).send(org.mockito.ArgumentMatchers.argThat(message ->
+			message instanceof ProposalMessage && ((ProposalMessage) message).isManualGp()
+				&& ((ProposalMessage) message).getOwnerMemberId() == 1L));
+		ProposalMessage wire = new ProposalMessage(pending);
+		wire.setMemberId(1L);
+		assertTrue(pending.hasSameIdentity(wire.decode(PARTY_ID).get()));
+		LootProposal accepted = wire.decode(PARTY_ID).get().decide(LootProposalStatus.ACCEPTED,
+			wire.decode(PARTY_ID).get().getEvent().getCapturedAt(),
+			Arrays.asList(new LootshareParticipant(1L, "Alice"), new LootshareParticipant(2L, "Bob")));
+		DecisionMessage decision = new DecisionMessage(accepted);
+		decision.setMemberId(2L);
+		controller.onDecisionMessage(decision);
+		assertEquals(1000L, controller.getActiveCalculation().getTotalAcceptedValue());
+	}
+
+	@Test
+	public void twoIdenticalNpcDropsProduceTwoSplitsAcrossBothEventPaths()
+	{
+		controller.setMemberApproved(2L, true);
+		controller.stop();
+		ItemManager prices = mock(ItemManager.class);
+		when(prices.canonicalize(org.mockito.ArgumentMatchers.anyInt())).thenAnswer(invocation -> invocation.getArgument(0));
+		when(prices.getItemPrice(org.mockito.ArgumentMatchers.anyInt())).thenReturn(1L);
+		ClientThread thread = mock(ClientThread.class);
+		ScheduledExecutorService background = mock(ScheduledExecutorService.class);
+		doAnswer(invocation -> {
+			((Runnable) invocation.getArgument(0)).run();
+			return null;
+		}).when(thread).invokeLater(any(Runnable.class));
+		doAnswer(invocation -> {
+			((Runnable) invocation.getArgument(0)).run();
+			return null;
+		}).when(background).execute(any(Runnable.class));
+		controller = new LootshareController(client, thread, partyService, config, background,
+			new LootCaptureService(prices), engine, new LootshareCalculator(), storage);
+		controller.start();
+		com.communitylootshare.party.RecoveryMessage recovered = com.communitylootshare.party.RecoveryMessage.completed(1L);
+		recovered.setMemberId(2L);
+		controller.onRecoveryMessage(recovered);
+		NPCComposition npc = mock(NPCComposition.class);
+		when(npc.getName()).thenReturn("Goblin");
+		List<ItemStack> stacks = Collections.singletonList(new ItemStack(ItemID.COINS, 100));
+		LootReceived higher = mock(LootReceived.class);
+		when(higher.getName()).thenReturn("Goblin");
+		when(higher.getType()).thenReturn(LootRecordType.NPC);
+		when(higher.getItems()).thenReturn(stacks);
+		for (int i = 0; i < 2; i++)
+		{
+			controller.onServerNpcLoot(new ServerNpcLoot(npc, stacks));
+			controller.onLootReceived(higher);
+		}
+		LootshareCalculation calculation = controller.getActiveCalculation();
+		assertEquals(2, controller.getActivePartyProposals().size());
+		assertEquals(200L, calculation.getTotalAcceptedValue());
+		assertEquals(2, calculation.getBalances().size());
+		assertEquals(1, calculation.getTransfers().size());
+		assertEquals(100L, calculation.getTransfers().get(0).getAmount());
+	}
+
+	@Test
+	public void restartRecoversWhenPersistedHostHasLeftTheParty()
+	{
+		assertEquals(MutationResult.APPLIED, controller.addManualGp(1L, 1000L));
+		controller.transferHost(2L);
+		controller.stop();
+		when(partyService.getMemberById(2L)).thenReturn(null);
+		when(partyService.getMembers()).thenReturn(Collections.singletonList(localMember));
+		controller.start();
+		assertEquals(1L, controller.getActiveHostMemberId());
+		assertEquals(3L, engine.getActiveHostRevision());
+		assertEquals(1000L, controller.getActiveCalculation().getTotalAcceptedValue());
 	}
 
 	private static PartyMember member(long memberId, String displayName)

@@ -55,10 +55,10 @@ public class UiControllerDebugTest
 		ItemComposition fang = mock(ItemComposition.class);
 		when(fang.getName()).thenReturn("Osmumten's fang");
 		when(itemManager.getItemComposition(ItemID.OSMUMTENS_FANG)).thenReturn(fang);
-		when(itemManager.getItemPrice(ItemID.OSMUMTENS_FANG)).thenReturn(18_402_523);
-		when(itemManager.getItemPrice(ItemID.LIGHTBEARER)).thenReturn(2_500_000);
-		when(itemManager.getItemPrice(ItemID.MASORI_BODY)).thenReturn(43_636_445);
-		when(itemManager.getItemPrice(ItemID.TUMEKENS_SHADOW_UNCHARGED)).thenReturn(880_012_003);
+		when(itemManager.getItemPrice(ItemID.OSMUMTENS_FANG)).thenReturn(18_402_523L);
+		when(itemManager.getItemPrice(ItemID.LIGHTBEARER)).thenReturn(2_500_000L);
+		when(itemManager.getItemPrice(ItemID.MASORI_BODY)).thenReturn(43_636_445L);
+		when(itemManager.getItemPrice(ItemID.TUMEKENS_SHADOW_UNCHARGED)).thenReturn(880_012_003L);
 		controller = new UiController(client, clientThread, partyService,
 			itemManager, lootshareController, debugSession);
 		controller.start(mock(Panel.class));
@@ -116,7 +116,7 @@ public class UiControllerDebugTest
 	@Test
 	public void rejectsAnItemPresetWhenRuneLiteHasNoPrice()
 	{
-		when(itemManager.getItemPrice(ItemID.MASORI_BODY)).thenReturn(0);
+		when(itemManager.getItemPrice(ItemID.MASORI_BODY)).thenReturn(0L);
 		controller.startDebugSimulation();
 		long ownerMemberId = debugSession.snapshot().getOwnerMemberId();
 

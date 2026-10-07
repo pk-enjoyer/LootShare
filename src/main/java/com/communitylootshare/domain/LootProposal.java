@@ -25,6 +25,7 @@ public final class LootProposal
 	private final LootProposalStatus status;
 	private final Instant decidedAt;
 	private final List<LootshareParticipant> participants;
+	private LootDecisionReceipt decisionReceipt;
 
 	private LootProposal(long partyId, long ownerMemberId, SharedLootEvent event, LootProposalStatus status,
 	                     Instant decidedAt, List<LootshareParticipant> participants)
@@ -64,7 +65,8 @@ public final class LootProposal
 		this.ownerMemberId = ownerMemberId;
 		this.event = event;
 		this.status = status;
-		this.decidedAt = decidedAt;
+		// Decisions use the same millisecond precision as Party payloads and receipts.
+		this.decidedAt = decidedAt == null ? null : Instant.ofEpochMilli(decidedAt.toEpochMilli());
 		this.participants = Collections.unmodifiableList(participantCopy);
 	}
 
@@ -122,9 +124,29 @@ public final class LootProposal
 				event.getCapturedAt(), event.getItems()));
 		if (status == LootProposalStatus.PENDING)
 		{
+			if (decisionReceipt != null)
+			{
+				throw new IllegalArgumentException("Pending proposals cannot contain a receipt");
+			}
 			return copy;
 		}
-		return copy.decide(status, decidedAt, participants);
+		return copy.decide(status, decidedAt, participants).withDecisionReceipt(decisionReceipt);
+	}
+
+	public LootProposal withDecisionReceipt(LootDecisionReceipt receipt)
+	{
+		if (receipt != null && status == LootProposalStatus.PENDING)
+		{
+			throw new IllegalArgumentException("Pending proposals cannot contain a receipt");
+		}
+		LootProposal copy = new LootProposal(partyId, ownerMemberId, event, status, decidedAt, participants);
+		copy.decisionReceipt = receipt == null ? null : receipt.validatedCopy();
+		return copy;
+	}
+
+	public LootDecisionReceipt getDecisionReceipt()
+	{
+		return decisionReceipt;
 	}
 
 	public boolean hasSameIdentity(LootProposal other)

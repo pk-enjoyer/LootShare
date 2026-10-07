@@ -6,6 +6,7 @@
 package com.communitylootshare.capture;
 
 import com.communitylootshare.domain.LootValueBasis;
+import com.communitylootshare.capture.LootCaptureService.CaptureOrigin;
 import com.communitylootshare.domain.SharedLootEvent;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -39,7 +40,7 @@ public class LootCaptureServiceTest
 	{
 		itemManager = mock(ItemManager.class);
 		when(itemManager.canonicalize(anyInt())).thenAnswer(invocation -> invocation.getArgument(0));
-		when(itemManager.getItemPrice(anyInt())).thenReturn(50);
+		when(itemManager.getItemPrice(anyInt())).thenReturn(50L);
 		AtomicInteger ids = new AtomicInteger();
 		service = new LootCaptureService(itemManager, () -> "proposal-" + ids.incrementAndGet());
 	}
@@ -69,9 +70,9 @@ public class LootCaptureServiceTest
 	@Test
 	public void capturesEveryItemInAnNpcDropIncludingZeroValueItems()
 	{
-		when(itemManager.getItemPrice(100)).thenReturn(100_000);
-		when(itemManager.getItemPrice(101)).thenReturn(25);
-		when(itemManager.getItemPrice(102)).thenReturn(0);
+		when(itemManager.getItemPrice(100)).thenReturn(100_000L);
+		when(itemManager.getItemPrice(101)).thenReturn(25L);
+		when(itemManager.getItemPrice(102)).thenReturn(0L);
 		List<ItemStack> stacks = Arrays.asList(
 			new ItemStack(100, 1), new ItemStack(101, 4), new ItemStack(102, 3));
 
@@ -107,14 +108,65 @@ public class LootCaptureServiceTest
 	}
 
 	@Test
-	public void suppressesOnlyIdenticalSameTickCapturesAndCanReset()
+	public void pairsDuplicateOriginsAndCanReset()
 	{
 		List<ItemStack> stacks = Collections.singletonList(new ItemStack(100, 2));
-		assertTrue(service.capture("Boss", stacks, "Alice", Instant.EPOCH, 10L).isPresent());
+		assertTrue(service.capture("Boss", stacks, "Alice", Instant.EPOCH, 10L,
+			LootValueBasis.GRAND_EXCHANGE, CaptureOrigin.SERVER_NPC).isPresent());
 		assertFalse(service.capture("Boss", stacks, "Alice", Instant.EPOCH.plusSeconds(1), 10L).isPresent());
 		assertTrue(service.capture("Boss", stacks, "Alice", Instant.EPOCH.plusSeconds(2), 11L).isPresent());
 		service.resetDeduplication();
 		assertTrue(service.capture("Boss", stacks, "Alice", Instant.EPOCH.plusSeconds(3), 11L).isPresent());
+	}
+	@Test public void capturesSeparateSameTickIdenticalDrops()
+	{
+		ItemManager prices = mock(ItemManager.class);
+		when(prices.canonicalize(anyInt())).thenAnswer(i -> i.getArgument(0));
+		when(prices.getItemPrice(anyInt())).thenReturn(50L);
+		LootCaptureService capture = new LootCaptureService(prices);
+		assertTrue(capture.capture("Goblin", Collections.singletonList(new ItemStack(526, 1)),
+			"Alice", Instant.EPOCH, 42L).isPresent());
+		assertTrue(capture.capture("Goblin", Collections.singletonList(new ItemStack(526, 1)),
+			"Alice", Instant.EPOCH.plusMillis(1), 42L).isPresent());
+	}
+
+
+	@Test
+	public void preservesTwoIdenticalOccurrencesWhilePairingBothSubscriberOrders()
+	{
+		List<ItemStack> stacks = Collections.singletonList(new ItemStack(100, 2));
+		for (CaptureOrigin first : Arrays.asList(CaptureOrigin.SERVER_NPC, CaptureOrigin.LOOT_RECEIVED))
+		{
+			service.resetDeduplication();
+			CaptureOrigin other = first == CaptureOrigin.SERVER_NPC
+				? CaptureOrigin.LOOT_RECEIVED : CaptureOrigin.SERVER_NPC;
+			long total = 0L;
+			for (CaptureOrigin origin : Arrays.asList(first, first, other, other))
+			{
+				Optional<SharedLootEvent> captured = service.capture("Boss", stacks, "Alice",
+					Instant.EPOCH, 10L, LootValueBasis.GRAND_EXCHANGE, origin);
+				if (captured.isPresent()) total += captured.get().getTotal();
+			}
+			assertEquals(200L, total);
+		}
+	}
+
+	@Test
+	public void pairsInterleavedFingerprintsAndKeepsIndependentEvents()
+	{
+		List<ItemStack> a = Collections.singletonList(new ItemStack(100, 1));
+		List<ItemStack> b = Collections.singletonList(new ItemStack(101, 1));
+		assertTrue(service.capture("Boss", a, "Alice", Instant.EPOCH, 10L,
+			LootValueBasis.GRAND_EXCHANGE, CaptureOrigin.SERVER_NPC).isPresent());
+		assertTrue(service.capture("Boss", b, "Alice", Instant.EPOCH, 10L,
+			LootValueBasis.GRAND_EXCHANGE, CaptureOrigin.SERVER_NPC).isPresent());
+		assertFalse(service.capture("Boss", a, "Alice", Instant.EPOCH, 10L,
+			LootValueBasis.GRAND_EXCHANGE, CaptureOrigin.LOOT_RECEIVED).isPresent());
+		assertFalse(service.capture("Boss", b, "Alice", Instant.EPOCH, 10L,
+			LootValueBasis.GRAND_EXCHANGE, CaptureOrigin.LOOT_RECEIVED).isPresent());
+		for (int i = 0; i < 2; i++)
+			assertTrue(service.capture("Boss", a, "Alice", Instant.EPOCH, 10L,
+				LootValueBasis.GRAND_EXCHANGE, CaptureOrigin.INDEPENDENT).isPresent());
 	}
 
 	@Test

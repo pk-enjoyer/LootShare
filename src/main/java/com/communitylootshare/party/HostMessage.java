@@ -10,12 +10,15 @@ import com.communitylootshare.domain.LootshareSession;
 import com.communitylootshare.domain.LootshareSettings;
 import com.communitylootshare.domain.MemberApprovalStatus;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import net.runelite.client.party.messages.PartyMemberMessage;
 
 /**
@@ -23,7 +26,7 @@ import net.runelite.client.party.messages.PartyMemberMessage;
  */
 public class HostMessage extends PartyMemberMessage
 {
-	public static final int PROTOCOL_VERSION = 4;
+	public static final int PROTOCOL_VERSION = 6;
 
 	private int protocolVersion = PROTOCOL_VERSION;
 	private long hostMemberId;
@@ -38,6 +41,8 @@ public class HostMessage extends PartyMemberMessage
 	private Boolean allowMemberManualGp;
 	private List<MemberApproval> memberApprovals;
 	private long revision;
+	private Map<String, Long> decisionKeys = new LinkedHashMap<>();
+	private Set<String> decisionAuthorizations = new LinkedHashSet<>();
 
 	public HostMessage()
 	{
@@ -56,6 +61,19 @@ public class HostMessage extends PartyMemberMessage
 
 	public HostMessage(long hostMemberId, LootshareSettings settings, long revision,
 	                                     Map<Long, MemberApprovalStatus> approvalStatuses)
+	{
+		this(hostMemberId, settings, revision, approvalStatuses, Collections.emptyMap());
+	}
+
+	public HostMessage(long hostMemberId, LootshareSettings settings, long revision,
+	                   Map<Long, MemberApprovalStatus> approvalStatuses, Map<String, Long> decisionKeys)
+	{
+		this(hostMemberId, settings, revision, approvalStatuses, decisionKeys, Collections.emptySet());
+	}
+
+	public HostMessage(long hostMemberId, LootshareSettings settings, long revision,
+	                   Map<Long, MemberApprovalStatus> approvalStatuses, Map<String, Long> decisionKeys,
+	                   Collection<String> decisionAuthorizations)
 	{
 		if (hostMemberId <= 0L || settings == null || revision <= 0L || approvalStatuses == null
 			|| approvalStatuses.size() > LootshareSession.MAX_MEMBER_APPROVALS)
@@ -81,6 +99,22 @@ public class HostMessage extends PartyMemberMessage
 		}
 		this.memberApprovals.sort(Comparator.comparingLong(MemberApproval::getMemberId));
 		this.revision = revision;
+		this.decisionKeys = validateDecisionKeys(decisionKeys);
+		this.decisionAuthorizations = validateDecisionAuthorizations(decisionAuthorizations);
+	}
+
+	private static Set<String> validateDecisionAuthorizations(Collection<String> authorizations)
+	{
+		LootshareSession validation = new LootshareSession("authorizations", 1L, java.time.Instant.EPOCH);
+		validation.trustDecisionAuthorizations(authorizations);
+		return validation.getDecisionAuthorizations();
+	}
+
+	private static Map<String, Long> validateDecisionKeys(Map<String, Long> keys)
+	{
+		LootshareSession validation = new LootshareSession("keys", 1L, java.time.Instant.EPOCH);
+		validation.trustDecisionKeys(keys);
+		return validation.getDecisionKeys();
 	}
 
 	private static Map<Long, MemberApprovalStatus> validateApprovals(long hostMemberId,
@@ -115,7 +149,7 @@ public class HostMessage extends PartyMemberMessage
 
 	public Optional<DecodedHostState> decode()
 	{
-		if ((protocolVersion != 3 && protocolVersion != PROTOCOL_VERSION) || getMemberId() <= 0L
+		if ((protocolVersion != 3 && protocolVersion != 4 && protocolVersion != 5 && protocolVersion != PROTOCOL_VERSION) || getMemberId() <= 0L
 			|| hostMemberId <= 0L || revision <= 0L || minimumSharedLootValue == null
 			|| captureNpcLoot == null || captureEventLoot == null || capturePlayerLoot == null
 			|| capturePickpocketLoot == null || captureUnknownLoot == null
@@ -146,7 +180,9 @@ public class HostMessage extends PartyMemberMessage
 				return Optional.empty();
 			}
 			approvals = validateApprovals(hostMemberId, approvals);
-			return Optional.of(new DecodedHostState(hostMemberId, settings, revision, approvals));
+			Map<String, Long> keys = protocolVersion < 5 ? Collections.emptyMap() : validateDecisionKeys(decisionKeys);
+			return Optional.of(new DecodedHostState(hostMemberId, settings, revision, approvals, keys,
+				protocolVersion < 6 ? Collections.emptySet() : validateDecisionAuthorizations(decisionAuthorizations)));
 		}
 		catch (IllegalArgumentException | NullPointerException ignored)
 		{
@@ -206,14 +242,18 @@ public class HostMessage extends PartyMemberMessage
 		private final LootshareSettings settings;
 		private final long revision;
 		private final Map<Long, MemberApprovalStatus> approvalStatuses;
+		private final Map<String, Long> decisionKeys;
+		private final Set<String> decisionAuthorizations;
 
 		private DecodedHostState(long hostMemberId, LootshareSettings settings, long revision,
-		                         Map<Long, MemberApprovalStatus> approvalStatuses)
+		                         Map<Long, MemberApprovalStatus> approvalStatuses, Map<String, Long> decisionKeys, Set<String> decisionAuthorizations)
 		{
 			this.hostMemberId = hostMemberId;
 			this.settings = settings.validatedCopy();
 			this.revision = revision;
 			this.approvalStatuses = Collections.unmodifiableMap(new LinkedHashMap<>(approvalStatuses));
+			this.decisionKeys = Collections.unmodifiableMap(new LinkedHashMap<>(decisionKeys));
+			this.decisionAuthorizations = Collections.unmodifiableSet(new LinkedHashSet<>(decisionAuthorizations));
 		}
 
 		public long getHostMemberId()
@@ -239,6 +279,16 @@ public class HostMessage extends PartyMemberMessage
 		public Map<Long, MemberApprovalStatus> getApprovalStatuses()
 		{
 			return approvalStatuses;
+		}
+
+		public Set<String> getDecisionAuthorizations()
+		{
+			return decisionAuthorizations;
+		}
+
+		public Map<String, Long> getDecisionKeys()
+		{
+			return decisionKeys;
 		}
 	}
 }

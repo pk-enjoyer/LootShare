@@ -46,6 +46,7 @@ import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
 import javax.swing.border.EmptyBorder;
 import lombok.extern.slf4j.Slf4j;
+import net.runelite.api.gameval.ItemID;
 import net.runelite.client.game.ItemManager;
 import net.runelite.client.ui.ColorScheme;
 import net.runelite.client.ui.FontManager;
@@ -209,6 +210,12 @@ public class Panel extends PluginPanel
 
 	private static String itemToolTip(LootItem item)
 	{
+		if (item.getItemId() == 0)
+		{
+			return "<html>Manual GP<br>" + QuantityFormatter.formatNumber(item.getQuantity())
+				+ " contribution(s)<br>Captured value: " + QuantityFormatter.formatNumber(item.getTotalValue())
+				+ " gp</html>";
+		}
 		return "<html>" + item.getName()
 			+ " x " + QuantityFormatter.formatNumber(item.getQuantity())
 			+ "<br>Captured value: " + QuantityFormatter.formatNumber(item.getTotalValue()) + " gp</html>";
@@ -850,8 +857,10 @@ public class Panel extends PluginPanel
 					image.setToolTipText(itemToolTip(item));
 					try
 					{
+						boolean manualGp = item.getItemId() == 0;
+						long imageAmount = manualGp ? item.getTotalValue() : item.getQuantity();
 						AsyncBufferedImage itemImage = itemManager.getImage(
-							item.getItemId(), imageQuantity(item.getQuantity()), item.getQuantity() > 1L);
+							manualGp ? ItemID.COINS : item.getItemId(), imageQuantity(imageAmount), imageAmount > 1L);
 						if (itemImage != null)
 						{
 							itemImage.addTo(image);
