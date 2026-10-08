@@ -9,6 +9,13 @@ import com.communitylootshare.LootshareConfig;
 import com.communitylootshare.capture.LootCaptureService;
 import com.communitylootshare.capture.LootCaptureService.CaptureOrigin;
 import com.communitylootshare.domain.LootshareState;
+import com.communitylootshare.domain.HostPeriod;
+import com.communitylootshare.domain.HostHistoryEvent;
+import com.communitylootshare.domain.HistoryCommitment;
+import com.communitylootshare.domain.SettlementSummary;
+import com.communitylootshare.party.HistoryMessage;
+import net.runelite.client.chat.ChatMessageManager;
+import net.runelite.client.chat.QueuedMessage;
 import com.communitylootshare.domain.LootDecisionReceipt;
 import com.communitylootshare.domain.LootProposal;
 import com.communitylootshare.domain.LootProposalStatus;
@@ -97,6 +104,14 @@ public class LootshareController
 	private volatile Runnable stateChangeListener = () -> {
 	};
 
+	private ChatMessageManager chatMessageManager;
+	private final Map<String, HistoryAssembly> historyAssemblies = new LinkedHashMap<>();
+	private final Map<String, BufferedHistory> bufferedHistory = new LinkedHashMap<>();
+	private final Set<String> emittedNotices = new java.util.LinkedHashSet<>();
+	private boolean liveHostDeparture;
+	private boolean suppressHostClaimUntilSync;
+	private volatile String persistenceNotice;
+
 	private boolean started;
 	private boolean ready;
 	private boolean replayingDeferredActions;
@@ -127,6 +142,225 @@ public class LootshareController
 		this.engine = engine;
 		this.calculator = calculator;
 		this.storage = storage;
+	}
+
+	@Inject
+	public void setChatMessageManager(ChatMessageManager manager) { chatMessageManager = manager; }
+	private void notice(String id, String text)
+	{
+		if (!emittedNotices.add(id)) { return; }
+		while (emittedNotices.size() > 512) { emittedNotices.remove(emittedNotices.iterator().next()); }
+		if (chatMessageManager != null)
+		{
+			chatMessageManager.queue(QueuedMessage.builder().type(ChatMessageType.CONSOLE)
+				.runeLiteFormattedMessage("[Community Lootshare] " + text).build());
+		}
+	}
+	public String getPersistenceNotice() { return persistenceNotice; }
+	public long getActiveHostRevision() { return isReady() ? engine.getActiveHostRevision() : 0L; }
+	public boolean canApplyMySettings()
+	{
+		PartyMember local = partyService.getLocalMember();
+		return local != null && local.getMemberId() == getActiveHostMemberId() && !recoveringHistory
+			&& getActiveHostSettings().map(settings -> !settings.equals(configuredSettings())).orElse(false);
+	}
+
+	public MutationResult applyMySettings(long displayedHostMemberId, long displayedRevision)
+	{
+		return applyMySettings(engine.getActivePartyId(), displayedHostMemberId, displayedRevision);
+	}
+	public MutationResult applyMySettings(long displayedPartyId, long displayedHostMemberId, long displayedRevision)
+	{
+		if (!isReady() || !partyService.isInParty() || engine.getActivePartyId() != partyService.getPartyId())
+		{
+			return MutationResult.NO_ACTIVE_SESSION;
+		}
+		PartyMember local = partyService.getLocalMember();
+		if (local == null || local.getMemberId() != engine.getActiveHostMemberId()) { return MutationResult.NOT_HOST; }
+		if (!hostSettingsSynchronized || recoveringHistory || displayedHostMemberId != local.getMemberId()
+			|| displayedPartyId != engine.getActivePartyId() || displayedRevision != engine.getActiveHostRevision()) { return MutationResult.CONFLICT; }
+		LootshareSession beforeSession = engine.getActiveSession().orElse(null);
+		LootshareSettings next = configuredSettings();
+		if (beforeSession == null) { return MutationResult.NO_ACTIVE_SESSION; }
+		if (beforeSession.getHostSettings().equals(next)) { return MutationResult.DUPLICATE; }
+		long revision = nextHostRevision();
+		if (revision == 0) { return MutationResult.LIMIT_REACHED; }
+		ensureHostPeriod();
+		beforeSession = engine.getActiveSession().get();
+		LootshareSession afterSession = beforeSession.snapshot();
+		afterSession.setHostState(local.getMemberId(), next, revision);
+		HostHistoryEvent event = signHistory(new HostHistoryEvent("settings:" + UUID.randomUUID(),
+			engine.getActivePartyId(), revision, beforeSession.getHostPeriod(), periodTime(beforeSession.getHostPeriod()), HostHistoryEvent.Kind.SETTINGS_APPLIED,
+			HostHistoryEvent.Reason.SETTINGS, beforeSession.getHostSettings(), next,
+			SettlementSummary.from(calculator.calculate(beforeSession)), SettlementSummary.from(calculator.calculate(afterSession)), true, null));
+		if (event == null) { return MutationResult.INVALID; }
+		MutationResult result = engine.applySettingsWithHistory(local.getMemberId(), displayedRevision, next, event);
+		if (result == MutationResult.APPLIED)
+		{
+			sendCurrentHostState(); sendHistory(event, 0L, true);
+			settingsNotice(event);
+			queueCurrentStateForSave(); notifyStateChanged();
+		}
+		return result;
+	}
+
+	public void onHistoryMessage(HistoryMessage message)
+	{
+		if (message == null || !partyService.isInParty() || partyService.getMemberById(message.getMemberId()) == null
+			|| !message.isValid(partyService.getPartyId())) { return; }
+		executeWhenReady(() -> {
+			PartyMember local = partyService.getLocalMember();
+			if (local == null || engine.getActivePartyId() != partyService.getPartyId()
+				|| (message.getTargetMemberId() != 0L && message.getTargetMemberId() != local.getMemberId())) { return; }
+			String key = message.getMemberId() + ":" + message.getEventId();
+			HistoryAssembly assembly = historyAssemblies.get(key);
+			if (assembly == null)
+			{
+				if (historyAssemblies.size() >= 8) { historyAssemblies.remove(historyAssemblies.keySet().iterator().next()); }
+				assembly = new HistoryAssembly(message.getCount(), message.isLive(), message.getTargetMemberId(),
+					hostSettingsSynchronized && message.getMemberId() == engine.getActiveHostMemberId());
+				historyAssemblies.put(key, assembly);
+			}
+			if (!assembly.accept(message)) { historyAssemblies.remove(key); return; }
+			if (!assembly.isComplete()) { return; }
+			historyAssemblies.remove(key);
+			HistoryAssembly completed = assembly;
+			storage.decodeHistory(assembly.json()).ifPresent(event -> {
+				if (!event.getEventId().equals(message.getEventId()) || event.getPartyId() != engine.getActivePartyId()
+					|| !event.verifies() || event.getReceipt() == null) { return; }
+				if (bufferedHistory.size() >= 16) { bufferedHistory.remove(bufferedHistory.keySet().iterator().next()); }
+				bufferedHistory.put(key, new BufferedHistory(event, completed.live && completed.authenticatedLive));
+				drainBufferedHistory();
+			});
+		});
+	}
+
+	private void drainBufferedHistory()
+	{
+		java.util.Iterator<BufferedHistory> iterator = bufferedHistory.values().iterator();
+		boolean changed = false;
+		List<HostHistoryEvent> imported = new ArrayList<>();
+		while (iterator.hasNext())
+		{
+			BufferedHistory buffered = iterator.next();
+			MutationResult result = engine.importHistoryEvent(buffered.event);
+			if (result == MutationResult.APPLIED || result == MutationResult.DUPLICATE)
+			{
+				iterator.remove();
+				if (result == MutationResult.APPLIED)
+				{
+					changed = true;
+					imported.add(buffered.event);
+					if (buffered.live && buffered.event.getKind() == HostHistoryEvent.Kind.SETTINGS_APPLIED) { settingsNotice(buffered.event); }
+				}
+			}
+		}
+		PartyMember local = partyService.getLocalMember();
+		if (local != null && local.getMemberId() == engine.getActiveHostMemberId())
+		{
+			for (HostHistoryEvent event : imported) { sendHistory(event, 0L, false); }
+		}
+		if (changed) { queueCurrentStateForSave(); notifyStateChanged(); }
+	}
+
+	private void settingsNotice(HostHistoryEvent event)
+	{
+		LootshareSettings old = event.getOldSettings(), next = event.getNewSettings();
+		List<String> changes = new ArrayList<>();
+		if (old.getMinimumSharedLootValue() != next.getMinimumSharedLootValue())
+		{
+			changes.add(String.format(java.util.Locale.US, "minimum split %,d → %,d gp", old.getMinimumSharedLootValue(), next.getMinimumSharedLootValue()));
+		}
+		if (old.getLootValueBasis() != next.getLootValueBasis()) { changes.add("new loot value " + next.getLootValueBasis().getDisplayName()); }
+		settingChange(changes, "NPC loot", old.isCaptureNpcLoot(), next.isCaptureNpcLoot());
+		settingChange(changes, "activity loot", old.isCaptureEventLoot(), next.isCaptureEventLoot());
+		settingChange(changes, "player loot", old.isCapturePlayerLoot(), next.isCapturePlayerLoot());
+		settingChange(changes, "pickpocket loot", old.isCapturePickpocketLoot(), next.isCapturePickpocketLoot());
+		settingChange(changes, "other loot", old.isCaptureUnknownLoot(), next.isCaptureUnknownLoot());
+		settingChange(changes, "logged-out members", old.isIncludeLoggedOutMembers(), next.isIncludeLoggedOutMembers());
+		settingChange(changes, "member manual GP", old.isAllowMemberManualGp(), next.isAllowMemberManualGp());
+		notice("settings:" + event.getPartyId() + ":" + event.getEventId(), safeName(event.getPeriod().getHostDisplayName())
+			+ " applied new party settings: " + String.join(", ", changes) + ". "
+			+ (old.getMinimumSharedLootValue() != next.getMinimumSharedLootValue() ? "Running balances recalculated; saved history unchanged." : "Saved history unchanged."));
+	}
+	private static void settingChange(List<String> changes, String name, boolean old, boolean next)
+	{
+		if (old != next) { changes.add(name + (next ? " enabled" : " disabled")); }
+	}
+	private static String safeName(String name)
+	{
+		return Text.removeTags(Text.sanitize(name)).replaceAll("[\\p{Cntrl}<>]", "").trim();
+	}
+	private static Instant now() { return Instant.ofEpochMilli(Instant.now().toEpochMilli()); }
+	private static Instant periodTime(HostPeriod period)
+	{
+		Instant at = now();
+		return at.isBefore(period.getStartedAt()) ? period.getStartedAt() : at;
+	}
+	private HostHistoryEvent signHistory(HostHistoryEvent event)
+	{
+		ensureLocalDecisionKey();
+		PartyMember local = partyService.getLocalMember();
+		if (decisionSigningKey == null || local == null) { return null; }
+		try { return event.sign(local.getMemberId(), decisionSigningKey); }
+		catch (GeneralSecurityException e) { log.debug("Unable to sign Community Lootshare history", e); return null; }
+	}
+	private void sendHistory(HostHistoryEvent event, long target, boolean live)
+	{
+		try { for (HistoryMessage message : storage.historyMessages(event, target, live)) { partyService.send(message); } }
+		catch (IllegalArgumentException e) { log.debug("Community Lootshare history exceeds transport bounds", e); }
+	}
+	private void sendStoredHistory(long target)
+	{
+		engine.getActiveSession().ifPresent(session -> {
+			for (HostHistoryEvent event : session.getHistoryEvents()) { sendHistory(event, target, false); }
+		});
+	}
+	private void ensureHostPeriod()
+	{
+		LootshareSession session = engine.getActiveSession().orElse(null);
+		PartyMember host = partyService.getMemberById(engine.getActiveHostMemberId());
+		if (session != null && session.getHostPeriod() == null && host != null)
+		{
+			engine.setHostPeriod(new HostPeriod(UUID.randomUUID().toString(), host.getMemberId(), displayName(host, null),
+				null, now(), null), true);
+		}
+	}
+	private boolean archiveHostBoundary(boolean complete)
+	{
+		boolean archived = false;
+		while (archiveNextHostBoundary(complete)) { archived = true; }
+		return archived;
+	}
+	private boolean archiveNextHostBoundary(boolean complete)
+	{
+		LootshareSession session = engine.getActiveSession().orElse(null);
+		if (session == null || session.getClosingPeriod() == null) { return false; }
+		HostPeriod closing = session.getClosingPeriod();
+		// Calculate with the outgoing policy even if recovery has installed the next host period.
+		LootshareSession calculationSession = session.snapshot();
+		calculationSession.setHostState(session.getHostMemberId(), session.getClosingSettings(), session.getHostRevision());
+		SettlementSummary summary = SettlementSummary.from(calculator.calculate(calculationSession));
+		HostHistoryEvent event = signHistory(new HostHistoryEvent("close:" + closing.getPeriodId(), session.getPartyId(),
+			session.getHostRevision(), closing, closing.getEndedAt(), HostHistoryEvent.Kind.PERIOD_CLOSED,
+			session.getClosingReason(), session.getClosingSettings(), session.getClosingSettings(), summary, summary, complete, null));
+		if (event == null) { return false; }
+		boolean changed = engine.commitHistoryEvent(event);
+		if (changed) { sendCurrentHostState(); sendHistory(event, 0L, true); queueCurrentStateForSave(); }
+		return changed;
+	}
+	private boolean recoveredAllCommittedRecords()
+	{
+		LootshareSession session = engine.getActiveSession().orElse(null);
+		if (session == null) { return false; }
+		Set<String> present = new HashSet<>();
+		for (LootProposal proposal : engine.getProposalsForActiveParty())
+		{
+			if (proposal.getStatus() != LootProposalStatus.PENDING) { present.add(LootDecisionReceipt.decisionId(proposal)); }
+		}
+		Set<String> history = new HashSet<>();
+		for (HostHistoryEvent event : session.getHistoryEvents()) { history.add(event.getEventId()); }
+		return present.containsAll(session.getDecisionAuthorizations()) && history.containsAll(session.getHistoryCommitments().keySet());
 	}
 
 	private static boolean capturesLootType(LootshareSettings settings, LootRecordType lootType)
@@ -170,6 +404,7 @@ public class LootshareController
 			ready = false;
 			hostSettingsSynchronized = false;
 			loadGeneration++;
+			historyAssemblies.clear(); bufferedHistory.clear(); liveHostDeparture = false;
 			deferredActions.clear();
 			clearHistoryRecovery();
 			ignoreServerNpcLootTick = Integer.MIN_VALUE;
@@ -201,6 +436,7 @@ public class LootshareController
 			clearHistoryRecovery();
 			decisionSigningKey = null;
 		}
+		historyAssemblies.clear(); bufferedHistory.clear(); emittedNotices.clear(); persistenceNotice = null; suppressHostClaimUntilSync = false;
 		captureService.resetDeduplication();
 		loadProfile(nextFile);
 	}
@@ -510,19 +746,35 @@ public class LootshareController
 			{
 				return;
 			}
-			MutationResult result = engine.updateHostState(authorizedMemberId, hostState.getHostMemberId(),
-				hostState.getSettings(), hostState.getRevision(), hostState.getApprovalStatuses());
+			HostPeriod incomingPeriod = hostState.getHostPeriod();
+			if (incomingPeriod == null && activeHostMemberId == hostState.getHostMemberId())
+			{
+				incomingPeriod = engine.getActiveSession().map(LootshareSession::getHostPeriod).orElse(null);
+			}
+			MutationResult result = engine.updateHostSnapshot(authorizedMemberId, hostState.getHostMemberId(),
+				hostState.getSettings(), hostState.getRevision(), hostState.getApprovalStatuses(), incomingPeriod,
+				hostState.getHistoryCommitments(), hostState.isEarlierHistoryOmitted(), hostState.isEarlierHostChainUnknown());
 			if (result == MutationResult.APPLIED || result == MutationResult.DUPLICATE)
 			{
 				hostSettingsSynchronized = true;
+				suppressHostClaimUntilSync = false;
 				boolean keysChanged = engine.trustDecisionKeys(hostState.getDecisionKeys());
 				boolean authorizationsChanged = engine.trustDecisionAuthorizations(hostState.getDecisionAuthorizations());
 				rememberActiveHostState();
+				drainBufferedHistory();
+				if (result == MutationResult.APPLIED && activeHostMemberId != hostState.getHostMemberId()
+					&& (wasSynchronized || liveHostDeparture))
+				{
+					notice("takeover:" + engine.getActivePartyId() + ":" + hostState.getRevision(), displayName(partyService.getMemberById(hostState.getHostMemberId()), null)
+						+ " is now host. Previous party settings were inherited.");
+					liveHostDeparture = false;
+				}
 				PartyMember local = partyService.getLocalMember();
 				boolean becomingHost = local != null && local.getMemberId() == hostState.getHostMemberId()
 					&& activeHostMemberId != local.getMemberId();
 				if (becomingHost)
 				{
+					ensureHostPeriod();
 					beginHistoryRecovery();
 				}
 				else if (local == null || local.getMemberId() != hostState.getHostMemberId())
@@ -535,7 +787,6 @@ public class LootshareController
 					queueCurrentStateForSave();
 				}
 				notifyStateChanged();
-				publishLocalHostConfigurationIfChanged();
 				if (!wasSynchronized && !becomingHost)
 				{
 					// A transferred host may have replayed before the bootstrap confirmation.
@@ -571,7 +822,6 @@ public class LootshareController
 			}
 			boolean hostVacated = vacateMissingHost();
 			boolean hostClaimed = claimHostIfEligible(false);
-			publishLocalHostConfigurationIfChanged();
 			if (hostVacated && !hostClaimed)
 			{
 				queueCurrentStateForSave();
@@ -600,6 +850,11 @@ public class LootshareController
 					return;
 				}
 				boolean decisionsApplied = resolvePendingProposalsAsHost();
+				if (engine.getActiveMemberApprovalStatus(event.getMemberId()) == MemberApprovalStatus.PENDING)
+				{
+					if (decisionsApplied) { queueCurrentStateForSave(); notifyStateChanged(); }
+					return;
+				}
 				long revision = nextHostRevision();
 				MutationResult removal = revision == 0L
 					? MutationResult.LIMIT_REACHED
@@ -618,6 +873,7 @@ public class LootshareController
 				}
 				return;
 			}
+			markDepartedHost();
 			MutationResult result = engine.vacateHost(event.getMemberId());
 			if (result != MutationResult.APPLIED)
 			{
@@ -635,7 +891,7 @@ public class LootshareController
 
 	public void onLocalConfigurationChanged()
 	{
-		executeWhenReady(this::publishLocalHostConfigurationIfChanged);
+		executeWhenReady(this::notifyStateChanged);
 	}
 
 	public void onMinimumSharedLootValueChanged()
@@ -646,12 +902,25 @@ public class LootshareController
 	public void onPartyChanged(PartyChanged event)
 	{
 		clearHistoryRecovery();
-		decisionSigningKey = null;
+		historyAssemblies.clear(); bufferedHistory.clear(); liveHostDeparture = false;
 		captureService.resetDeduplication();
 		ignoreServerNpcLootTick = Integer.MIN_VALUE;
 		hostSettingsSynchronized = false;
 		Long partyId = event == null ? null : event.getPartyId();
 		executeWhenReady(() -> {
+			if (partyId == null || partyId != engine.getActivePartyId())
+			{
+				LootshareSession leaving = engine.getActiveSession().orElse(null);
+				if (leaving != null && leaving.getHostPeriod() != null && decisionSigningKey != null
+					&& engine.getActiveDecisionKeys().containsKey(LootDecisionReceipt.keyId(
+						LootDecisionReceipt.publicKey(decisionSigningKey), leaving.getHostMemberId())))
+				{
+					// Remaining peers author the departure checkpoint after recovery. Keep the boundary locally for rejoin.
+					engine.markHostBoundary(now(), HostHistoryEvent.Reason.DEPARTURE);
+					engine.vacateHost(leaving.getHostMemberId());
+					suppressHostClaimUntilSync = true;
+				}
+			}
 			MutationResult result = partyId == null
 				? engine.leaveParty(Instant.now())
 				: engine.enterParty(partyId, UUID.randomUUID().toString(), Instant.now());
@@ -662,7 +931,6 @@ public class LootshareController
 			if (partyId != null && (result == MutationResult.APPLIED || result == MutationResult.DUPLICATE))
 			{
 				claimHostIfEligible(false);
-				publishLocalHostConfigurationIfChanged();
 				requestPartySync();
 			}
 			notifyStateChanged();
@@ -688,9 +956,7 @@ public class LootshareController
 			// handing authority to someone else. The Party transport authenticates this sender.
 			if (hostSettingsSynchronized && isFirstPartyMember(local.getMemberId()))
 			{
-				engine.getActiveHostSettings().ifPresent(settings -> partyService.send(new HostMessage(
-					engine.getActiveHostMemberId(), settings, engine.getActiveHostRevision(),
-					engine.getActiveMemberApprovalStatuses(), engine.getActiveDecisionKeys(), engine.getActiveDecisionAuthorizations())));
+				engine.getActiveSession().ifPresent(session -> partyService.send(new HostMessage(session)));
 			}
 			if (requester.getMemberId() == engine.getActiveHostMemberId())
 			{
@@ -705,12 +971,14 @@ public class LootshareController
 				{
 					partyService.send(new ProposalMessage(pending));
 				}
+				sendStoredHistory(requester.getMemberId());
 				partyService.send(RecoveryMessage.completed(requester.getMemberId()));
 			}
 			return;
 		}
 
 		sendCurrentHostState();
+		sendStoredHistory(requester.getMemberId());
 		for (LootProposal proposal : engine.getProposalsForActiveParty())
 		{
 			partyService.send(new ProposalMessage(proposal));
@@ -808,23 +1076,36 @@ public class LootshareController
 			return MutationResult.INVALID;
 		}
 
+		if (!hostSettingsSynchronized || recoveringHistory) { return MutationResult.CONFLICT; }
 		resolvePendingProposalsAsHost();
 		long revision = nextHostRevision();
 		if (revision == 0L)
 		{
 			return MutationResult.LIMIT_REACHED;
 		}
-		MutationResult result = engine.updateHostState(local.getMemberId(), nextHostMemberId,
-			engine.getActiveHostSettings().orElse(null), revision);
+		ensureHostPeriod();
+		LootshareSession outgoingSession = engine.getActiveSession().get();
+		HostPeriod predecessor = outgoingSession.getHostPeriod();
+		Instant boundary = periodTime(predecessor);
+		SettlementSummary summary = SettlementSummary.from(calculator.calculate(outgoingSession));
+		HostHistoryEvent checkpoint = signHistory(new HostHistoryEvent("close:" + predecessor.getPeriodId(), outgoingSession.getPartyId(),
+			revision, predecessor.end(boundary), boundary, HostHistoryEvent.Kind.PERIOD_CLOSED, HostHistoryEvent.Reason.TRANSFER,
+			outgoingSession.getHostSettings(), outgoingSession.getHostSettings(), summary, summary, recoveredAllCommittedRecords(), null));
+		if (checkpoint == null) { return MutationResult.INVALID; }
+		HostPeriod nextPeriod = new HostPeriod(UUID.randomUUID().toString(), nextHostMemberId, displayName(nextHost, null),
+			predecessor.getPeriodId(), boundary, null);
+		MutationResult result = engine.transferHostWithHistory(local.getMemberId(), nextHostMemberId,
+			outgoingSession.getHostRevision(), nextPeriod, checkpoint);
 		if (result == MutationResult.APPLIED)
 		{
 			clearHistoryRecovery();
 			hostSettingsSynchronized = true;
 			rememberActiveHostState();
 			queueCurrentStateForSave();
-			engine.getActiveHostSettings().ifPresent(settings -> partyService.send(
-				new HostMessage(nextHostMemberId, settings, revision,
-					engine.getActiveMemberApprovalStatuses(), engine.getActiveDecisionKeys(), engine.getActiveDecisionAuthorizations())));
+			engine.getActiveSession().ifPresent(session -> partyService.send(new HostMessage(session)));
+			sendHistory(checkpoint, 0L, true);
+			notice("takeover:" + engine.getActivePartyId() + ":" + revision, displayName(nextHost, null)
+				+ " is now host. Previous party settings were inherited.");
 			notifyStateChanged();
 		}
 		return result;
@@ -1178,6 +1459,7 @@ public class LootshareController
 		}
 		if (recoveryAwaiting.isEmpty())
 		{
+			archiveHostBoundary(recoveredAllCommittedRecords());
 			return;
 		}
 		recoveringHistory = true;
@@ -1197,7 +1479,7 @@ public class LootshareController
 		}
 		catch (RejectedExecutionException e)
 		{
-			clearHistoryRecovery();
+			finishHistoryRecovery();
 			log.debug("Community Lootshare recovery scheduling was rejected", e);
 		}
 		requestPartySync();
@@ -1205,6 +1487,7 @@ public class LootshareController
 
 	private void finishHistoryRecovery()
 	{
+		boolean complete = recoveryAwaiting.isEmpty() && recoveredAllCommittedRecords();
 		clearHistoryRecovery();
 		PartyMember local = partyService.getLocalMember();
 		if (!partyService.isInParty() || local == null || local.getMemberId() != engine.getActiveHostMemberId()
@@ -1212,12 +1495,14 @@ public class LootshareController
 		{
 			return;
 		}
+		boolean archived = archiveHostBoundary(complete);
 		boolean decisionsApplied = resolvePendingProposalsAsHost();
-		if (decisionsApplied)
+		if (decisionsApplied || archived)
 		{
 			queueCurrentStateForSave();
 		}
 		sendCurrentHostState();
+		sendStoredHistory(0L);
 		for (LootProposal proposal : engine.getProposalsForActiveParty())
 		{
 			partyService.send(new ProposalMessage(proposal));
@@ -1255,7 +1540,7 @@ public class LootshareController
 		{
 			return "Party member " + member.getMemberId();
 		}
-		String sanitized = Text.sanitize(name).trim();
+		String sanitized = safeName(name);
 		return sanitized.isEmpty() ? "Party member " + member.getMemberId() : sanitized;
 	}
 
@@ -1273,6 +1558,7 @@ public class LootshareController
 			return false;
 		}
 
+		if (suppressHostClaimUntilSync && engine.getActiveHostRevision() > 0L && members.size() > 1) { return false; }
 		PartyMember candidate = members.get(0);
 		if (deterministicSuccessor || engine.getActiveHostRevision() > 0L)
 		{
@@ -1294,15 +1580,26 @@ public class LootshareController
 		{
 			return false;
 		}
+		LootshareSession inherited = engine.getActiveSession().orElse(null);
 		MutationResult result = engine.updateHostState(local.getMemberId(), local.getMemberId(),
-			configuredSettings(), revision);
+			engine.getActiveHostRevision() == 0L ? configuredSettings() : inherited.getHostSettings(), revision);
 		if (result != MutationResult.APPLIED)
 		{
 			return false;
 		}
 		hostSettingsSynchronized = true;
+		suppressHostClaimUntilSync = false;
+		HostPeriod outgoing = inherited == null ? null : inherited.getHostPeriod();
+		engine.setHostPeriod(new HostPeriod(UUID.randomUUID().toString(), local.getMemberId(), displayName(local, null),
+			outgoing == null ? null : outgoing.getPeriodId(), outgoing == null ? now() : periodTime(outgoing), null), inherited != null && inherited.isEarlierHostChainUnknown() && revision > 1L);
 		ensureLocalDecisionKey();
-		if (deterministicSuccessor)
+		if (liveHostDeparture)
+		{
+			notice("takeover:" + engine.getActivePartyId() + ":" + revision, displayName(local, null)
+				+ " is now host. Previous party settings were inherited.");
+			liveHostDeparture = false;
+		}
+		if (deterministicSuccessor || (inherited != null && inherited.getClosingPeriod() != null))
 		{
 			beginHistoryRecovery();
 		}
@@ -1312,58 +1609,28 @@ public class LootshareController
 		return true;
 	}
 
+	private void markDepartedHost()
+	{
+		LootshareSession session = engine.getActiveSession().orElse(null);
+		if (session == null || session.getHostMemberId() <= 0L) { return; }
+		engine.markHostBoundary(now(), HostHistoryEvent.Reason.DEPARTURE);
+		HostPeriod period = session.getHostPeriod();
+		if (!replayingDeferredActions)
+		{
+			liveHostDeparture = true;
+			String name = period == null ? "Party member " + session.getHostMemberId() : safeName(period.getHostDisplayName());
+			notice("departure:" + session.getPartyId() + ":" + (period == null ? session.getHostRevision() : period.getPeriodId()), name
+				+ " left the party or disconnected. Closing their session and recovering party history.");
+		}
+	}
 	private boolean vacateMissingHost()
 	{
 		long hostMemberId = engine.getActiveHostMemberId();
-		boolean vacated = hostMemberId > 0L && partyService.getMemberById(hostMemberId) == null
-			&& engine.vacateHost(hostMemberId) == MutationResult.APPLIED;
-		if (vacated)
-		{
-			hostSettingsSynchronized = false;
-		}
+		if (hostMemberId <= 0L || partyService.getMemberById(hostMemberId) != null) { return false; }
+		markDepartedHost();
+		boolean vacated = engine.vacateHost(hostMemberId) == MutationResult.APPLIED;
+		if (vacated) { hostSettingsSynchronized = false; }
 		return vacated;
-	}
-
-	private void publishLocalHostConfigurationIfChanged()
-	{
-		if (!partyService.isInParty() || engine.getActivePartyId() != partyService.getPartyId())
-		{
-			return;
-		}
-		PartyMember local = partyService.getLocalMember();
-		LootshareSettings configuredSettings = configuredSettings();
-		if (local == null || engine.getActiveHostMemberId() != local.getMemberId())
-		{
-			return;
-		}
-		if (!hostSettingsSynchronized && !isFirstPartyMember(local.getMemberId()))
-		{
-			return;
-		}
-		hostSettingsSynchronized = true;
-		boolean keyAdded = ensureLocalDecisionKey();
-		if (engine.getActiveHostSettings().map(configuredSettings::equals).orElse(false))
-		{
-			if (keyAdded)
-			{
-				queueCurrentStateForSave();
-				sendCurrentHostState();
-			}
-			return;
-		}
-		long revision = nextHostRevision();
-		if (revision == 0L)
-		{
-			return;
-		}
-		MutationResult result = engine.updateHostState(local.getMemberId(), local.getMemberId(),
-			configuredSettings, revision);
-		if (result == MutationResult.APPLIED)
-		{
-			queueCurrentStateForSave();
-			sendCurrentHostState();
-			notifyStateChanged();
-		}
 	}
 
 	private void sendCurrentHostState()
@@ -1381,9 +1648,7 @@ public class LootshareController
 			return;
 		}
 		rememberActiveHostState();
-		engine.getActiveHostSettings().ifPresent(settings -> partyService.send(
-			new HostMessage(hostMemberId, settings, revision,
-				engine.getActiveMemberApprovalStatuses(), engine.getActiveDecisionKeys(), engine.getActiveDecisionAuthorizations())));
+		engine.getActiveSession().ifPresent(session -> partyService.send(new HostMessage(session)));
 	}
 
 	private void rememberActiveHostState()
@@ -1391,9 +1656,7 @@ public class LootshareController
 		long host = engine.getActiveHostMemberId();
 		if (host > 0L && Objects.equals(activeFile, storage.resolveCurrentFile()))
 		{
-			engine.getActiveHostSettings().ifPresent(settings -> storage.rememberHostState(engine.getActivePartyId(),
-				new HostMessage(host, settings, engine.getActiveHostRevision(), engine.getActiveMemberApprovalStatuses(),
-					engine.getActiveDecisionKeys(), engine.getActiveDecisionAuthorizations())));
+			engine.getActiveSession().ifPresent(session -> storage.rememberHostState(engine.getActivePartyId(), new HostMessage(session)));
 		}
 	}
 
@@ -1508,6 +1771,7 @@ public class LootshareController
 			engine.restore(result.getState());
 			hostSettingsSynchronized = false;
 			persistenceWritable = result.isWritable();
+			persistenceNotice = file != null && !persistenceWritable ? "History storage is read-only; existing files are preserved." : null;
 			ready = true;
 			replayingDeferredActions = true;
 			try
@@ -1519,7 +1783,13 @@ public class LootshareController
 					{
 						queueCurrentStateForSave();
 					}
+					LootshareSession loadedParty = engine.getActiveSession().orElse(null);
+					PartyMember loadingLocal = partyService.getLocalMember();
+					suppressHostClaimUntilSync = loadedParty != null && loadingLocal != null && loadedParty.getHostMemberId() == 0L
+						&& loadedParty.getClosingPeriod() != null && loadedParty.getHostPeriod() != null
+						&& loadedParty.getHostPeriod().getHostMemberId() == loadingLocal.getMemberId();
 					storage.recallHostState(partyService.getPartyId()).ifPresent(saved -> {
+						if (suppressHostClaimUntilSync && saved.getHostMemberId() == loadingLocal.getMemberId()) { return; }
 						if (saved.getRevision() < engine.getActiveHostRevision()
 							|| !engine.canTrustDecisionKeys(saved.getDecisionKeys())
 							|| !engine.canTrustDecisionAuthorizations(saved.getDecisionAuthorizations()))
@@ -1528,8 +1798,9 @@ public class LootshareController
 						}
 						long actor = engine.getActiveHostMemberId() == 0L ? saved.getHostMemberId()
 							: engine.getActiveHostMemberId();
-						MutationResult restored = engine.updateHostState(actor, saved.getHostMemberId(), saved.getSettings(),
-							saved.getRevision(), saved.getApprovalStatuses());
+						MutationResult restored = engine.updateHostSnapshot(actor, saved.getHostMemberId(), saved.getSettings(),
+							saved.getRevision(), saved.getApprovalStatuses(), saved.getHostPeriod(), saved.getHistoryCommitments(),
+							saved.isEarlierHistoryOmitted(), saved.isEarlierHostChainUnknown());
 						if (restored == MutationResult.APPLIED || restored == MutationResult.DUPLICATE)
 						{
 							engine.trustDecisionKeys(saved.getDecisionKeys());
@@ -1547,12 +1818,12 @@ public class LootshareController
 					{
 						// A restart in an existing Party can trust its own persisted authority.
 						hostSettingsSynchronized = true;
+						ensureHostPeriod();
 						if (persistedAuthority)
 						{
 							beginHistoryRecovery();
 						}
 					}
-					publishLocalHostConfigurationIfChanged();
 				}
 				// Keep initialization and replay ordered against websocket callbacks. Reentrant
 				// callbacks also join this queue rather than overtaking its earlier messages.
@@ -1652,7 +1923,15 @@ public class LootshareController
 			SaveRequest request;
 			while ((request = pollSaveRequest()) != null)
 			{
-				storage.save(request.file, request.state);
+				boolean saved = storage.save(request.file, request.state);
+				File savedFile = request.file;
+				clientThread.invokeLater(() -> {
+					if (isReady() && Objects.equals(activeFile, savedFile))
+					{
+						persistenceNotice = saved ? null : "History could not be saved. The last good file is preserved.";
+						notifyStateChanged();
+					}
+				});
 			}
 		}
 		finally
@@ -1684,6 +1963,34 @@ public class LootshareController
 		{
 			return !saveRequests.isEmpty();
 		}
+	}
+
+	private static final class BufferedHistory
+	{
+		private final HostHistoryEvent event;
+		private final boolean live;
+		private BufferedHistory(HostHistoryEvent event, boolean live) { this.event = event; this.live = live; }
+	}
+	private static final class HistoryAssembly
+	{
+		private final String[] chunks;
+		private final boolean live;
+		private final long target;
+		private final boolean authenticatedLive;
+		private int received;
+		private HistoryAssembly(int count, boolean live, long target, boolean authenticatedLive)
+		{
+			chunks = new String[count]; this.live = live; this.target = target; this.authenticatedLive = authenticatedLive;
+		}
+		private boolean accept(HistoryMessage message)
+		{
+			if (chunks.length != message.getCount() || live != message.isLive() || target != message.getTargetMemberId()) { return false; }
+			int index = message.getIndex();
+			if (chunks[index] != null) { return chunks[index].equals(message.getData()); }
+			chunks[index] = message.getData(); received++; return true;
+		}
+		private boolean isComplete() { return received == chunks.length; }
+		private String json() { return String.join("", chunks); }
 	}
 
 	private static final class SaveRequest

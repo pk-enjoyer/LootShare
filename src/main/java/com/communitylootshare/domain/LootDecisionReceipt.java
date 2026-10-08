@@ -177,6 +177,30 @@ public final class LootDecisionReceipt
 		}
 	}
 
+	/** Domain-separated history payloads include their signer identity in the signature. */
+	public static LootDecisionReceipt signBytes(long memberId, KeyPair key, byte[] payload) throws GeneralSecurityException
+	{
+		Signature signer = Signature.getInstance("SHA256withECDSA");
+		signer.initSign(key.getPrivate());
+		signer.update(java.nio.ByteBuffer.allocate(Long.BYTES).putLong(memberId).array());
+		signer.update(payload);
+		return new LootDecisionReceipt(memberId, publicKey(key), Base64.getEncoder().encodeToString(signer.sign()));
+	}
+
+	public boolean verifiesBytes(byte[] payload)
+	{
+		try
+		{
+			Signature verifier = Signature.getInstance("SHA256withECDSA");
+			verifier.initVerify(KeyFactory.getInstance("EC").generatePublic(
+				new X509EncodedKeySpec(Base64.getDecoder().decode(publicKey))));
+			verifier.update(java.nio.ByteBuffer.allocate(Long.BYTES).putLong(signerMemberId).array());
+			verifier.update(payload);
+			return verifier.verify(Base64.getDecoder().decode(signature));
+		}
+		catch (GeneralSecurityException | IllegalArgumentException e) { return false; }
+	}
+
 	public LootDecisionReceipt validatedCopy()
 	{
 		return new LootDecisionReceipt(signerMemberId, publicKey, signature);

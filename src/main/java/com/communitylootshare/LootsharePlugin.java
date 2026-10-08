@@ -3,6 +3,7 @@ package com.communitylootshare;
 import com.communitylootshare.integration.LootshareController;
 import com.communitylootshare.party.DecisionMessage;
 import com.communitylootshare.party.HostMessage;
+import com.communitylootshare.party.HistoryMessage;
 import com.communitylootshare.party.ProposalMessage;
 import com.communitylootshare.party.RecoveryMessage;
 import com.communitylootshare.ui.SwingUiInteractionGateway;
@@ -81,6 +82,7 @@ public class LootsharePlugin extends Plugin
 		wsClient.registerMessage(ProposalMessage.class);
 		wsClient.registerMessage(DecisionMessage.class);
 		wsClient.registerMessage(HostMessage.class);
+		wsClient.registerMessage(HistoryMessage.class);
 		wsClient.registerMessage(RecoveryMessage.class);
 		controller.start();
 		SwingUtilities.invokeLater(() -> {
@@ -118,6 +120,7 @@ public class LootsharePlugin extends Plugin
 		wsClient.unregisterMessage(ProposalMessage.class);
 		wsClient.unregisterMessage(DecisionMessage.class);
 		wsClient.unregisterMessage(HostMessage.class);
+		wsClient.unregisterMessage(HistoryMessage.class);
 		wsClient.unregisterMessage(RecoveryMessage.class);
 	}
 
@@ -155,6 +158,12 @@ public class LootsharePlugin extends Plugin
 	public void onCommunityLootshareHostMessage(HostMessage message)
 	{
 		controller.onHostMessage(message);
+	}
+
+	@Subscribe
+	public void onCommunityLootshareHistoryMessage(HistoryMessage message)
+	{
+		controller.onHistoryMessage(message);
 	}
 
 	@Subscribe

@@ -76,6 +76,10 @@ public class Panel extends PluginPanel
 	private final SettlementView settlementView = new SettlementView();
 	private final JLabel connectionStatus = new JLabel();
 	private final JLabel memberHeaderLabel = new JLabel("Party members");
+	private final JButton historyButton = new JButton("History ↗");
+	private final JButton applySettingsButton = new JButton("Apply my settings");
+	private final JLabel persistenceStatus = new JLabel();
+	private HostedSettings displayedSettings = HostedSettings.waiting();
 	private final JButton primaryButton = new JButton();
 	private final JButton secondaryButton = new JButton("Join party");
 	private final JButton previousPartyButton = new JButton("Join previous party");
@@ -116,6 +120,14 @@ public class Panel extends PluginPanel
 		content.add(buildMembersSection());
 		content.add(Box.createRigidArea(new Dimension(0, 8)));
 		content.add(buildSettlementSection());
+		content.add(Box.createRigidArea(new Dimension(0, 8)));
+		historyButton.setFocusable(false);
+		historyButton.addActionListener(event -> actions.openHistory());
+		content.add(historyButton);
+		persistenceStatus.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
+		content.add(persistenceStatus);
+		applySettingsButton.addActionListener(event -> actions.applyMySettings(displayedSettings.getPartyId(),
+			displayedSettings.getHostMemberId(), displayedSettings.getRevision()));
 		add(content, BorderLayout.NORTH);
 
 		primaryButton.addActionListener(event -> onPrimaryAction());
@@ -232,6 +244,11 @@ public class Panel extends PluginPanel
 		localHost = state.getMembers().stream().anyMatch(member -> member.isLocal() && member.isHost());
 		partyPassphrase = state.getPartyPassphrase();
 		renderConnection(state);
+		displayedSettings = state.getHostedSettings();
+		applySettingsButton.setVisible(localHost);
+		applySettingsButton.setEnabled(state.isReady() && displayedSettings.isApplyEnabled());
+		historyButton.setEnabled(state.isReady() && state.hasHistory());
+		persistenceStatus.setText(state.getPersistenceNotice() == null ? "" : "<html>" + state.getPersistenceNotice() + "</html>");
 		renderHostedSettings(state.getHostedSettings());
 		renderMembers(state.getMembers());
 		renderSettlement(state);
@@ -418,6 +435,12 @@ public class Panel extends PluginPanel
 				included(settings.isIncludeLoggedOutMembers())));
 			hostedSettingsBody.add(settingRow("Member manual GP",
 				included(settings.isAllowMemberManualGp())));
+		}
+		if (localHost)
+		{
+			applySettingsButton.setFocusable(false);
+			hostedSettingsBody.add(applySettingsButton);
+			hostedSettingsBody.add(emptyLabel("Applies your saved settings to the party. A new minimum split value recalculates existing running balances. Saved history stays unchanged."));
 		}
 		hostedSettingsBody.setVisible(hostedSettingsExpanded);
 		updateHostedSettingsToggleText();

@@ -45,7 +45,7 @@ The active Community Lootshare implementation provides:
   payer-to-receiver settlement transfers;
 - asynchronous, atomic, schema-versioned JSON persistence under
   `~/.runelite/community-lootshare/`, scoped to the active RuneLite profile;
-  schema-7 snapshots use gzip at a stable profile-ID path, so renaming a profile
+  schema-8 snapshots use gzip at a stable profile-ID path, so renaming a profile
   keeps its history. A single legacy name-based file migrates with its original
   preserved as a backup. Invalid records, ambiguous migrations, and unsupported
   schemas remain read-only. Writes are bounded to 5 MiB compressed and 64 MiB
@@ -65,7 +65,65 @@ its frozen roster, so excluding a member later does not rewrite earlier balances
 The sidebar now covers Party setup, the effective host policy, member eligibility,
 per-member loot inspection, balances, and settlement payments. The graph button
 opens one reusable settlement dashboard window and focuses it if it is already
-open. A history view, overlay, and notifications are not implemented yet.
+open. **History** opens a reusable browser of host chains and frozen cumulative
+checkpoints, including stored Parties after leaving. Local console notices report
+host departures, takeovers, and explicit settings applications. An overlay and
+general loot notifications are not implemented yet.
+
+## Inherited settings and host history
+
+Only a fresh Party starts from its founder's saved preferences. Succession,
+right-click transfers, restarts, and rejoins retain the effective Party policy,
+accepted and rejected loot, pending contributions, approvals, and balances. When
+an established host leaves RuneLite Party, the remaining member with the lowest
+Party member ID succeeds them. Logging out of OSRS while staying in Party does
+not end the host period.
+
+Editing plugin configuration saves personal preferences. To apply them to the
+current Party, the host opens **Host settings** and clicks **Apply my settings**.
+It applies immediately, without confirmation. The button is disabled during
+synchronization or recovery and when preferences already match. The request
+checks the displayed Party, host, and revision; an old click cannot change a
+new host or policy. Identical preferences produce no revision, audit, or notice.
+
+A new minimum split value recalculates **all carried accepted loot**. Captured
+prices, decisions, and participant rosters stay fixed. Valuation and capture
+changes affect new captures; eligibility and manual GP policy affect subsequent
+contributions and decisions. Departed members retain their historical shares.
+
+**History** groups records by Party, shows the chronological host chain, and
+lists completed host sessions newest first. Each session has a frozen cumulative
+checkpoint: ending settings, total, balances, transfers, and its settings
+application timeline with before/after settlements. These totals are cumulative,
+not the loot earned only during that host's period.
+
+Deliberate transfers finalize pending contributions under the outgoing policy
+before archiving and transferring authority. Departures retain the outgoing
+boundary and settings while the successor recovers finalized decisions and audit
+events. New decisions wait for replies, with the existing three-second fallback.
+A checkpoint is **incomplete** if peers did not reply or committed records are
+missing. Late verified recovery can improve the active ledger but cannot rewrite
+an archived checkpoint. Loot that reached no other client cannot be reconstructed.
+A locally departing host retains its pending boundary for authoritative recovery
+on rejoin; it cannot reclaim authority while waiting for the live Party snapshot.
+
+Protocol-7 host snapshots carry current host-period metadata and bounded history
+commitments. Version-1 history messages deliver events in bounded chunks.
+Signatures cover each full event; peer replay also requires its exact commitment
+from authenticated host state. Former-host key trust alone is insufficient.
+Consecutive departures during recovery retain each outgoing boundary. The recovering
+host also replays newly imported history to connected guests, including guests that
+synchronized before recovery finished. Audit and transfer timestamps cannot precede
+the inherited period start, even when host clocks differ.
+
+Initial sync and replay do not repeat old chat notices. Full history stays in the
+profile file; RuneLite configuration caches authority and commitments only.
+
+The latest **256 events per Party** are retained, with an explicit earlier-history
+omission marker. Legacy histories keep their loot and settings and label missing
+host chains as unknown. Failed writes preserve the last good file and show a
+storage notice in the sidebar. All participating clients should use this update;
+older payloads are readable, but missing historical details are not fabricated.
 
 ## Manual GP
 
@@ -79,7 +137,7 @@ and chat value parsing are not supported. Manual contributions display as
 ## Host recovery
 
 Use the same updated plugin version on every Party client. Host snapshots now use
-protocol 6; older host protocols 3, 4, and 5 remain readable, but older clients cannot
+protocol 7; older host protocols 3, 4, 5, and 6 remain readable, but older clients cannot
 participate in the new recovery exchange.
 
 A restarted or newly transferred host requests peer history and briefly holds new
@@ -142,6 +200,27 @@ sequenceDiagram
 5. Restart the host while another client is unavailable. After the short recovery
    fallback, new eligible contributions should finalize normally. Disable the
    plugin during that wait and verify it sends no later decisions.
+
+For the host-settings and history changes, use two updated development clients:
+
+1. Give Alice and Bob different saved thresholds and valuation preferences. Create
+   a Party as Alice, approve Bob, and record two contributions on opposite sides
+   of Bob's threshold. Compare both running balances and effective settings.
+2. Transfer host to Bob. Verify Alice's settings and balances are inherited, a
+   single takeover notice appears, and History contains Alice's unchanged
+   cumulative checkpoint. Repeat using Alice's Party departure/disconnect.
+3. Edit Bob's configuration. Verify the Party still uses the inherited policy.
+   Click **Apply my settings**; check the changed-settings notice, recalculated
+   running balances, and before/after audit. Alice's saved checkpoint stays fixed.
+4. Restart Bob, rejoin Alice, and transfer back. Check the current host, inherited
+   settings, original rosters, historical shares for departed members, and the
+   chronological chain. Log out of OSRS while staying in RuneLite Party and verify
+   that no host period closes.
+5. Delay a peer's reply beyond three seconds. Inspect the incomplete checkpoint,
+   then reconnect the peer: running totals can improve while the checkpoint stays
+   unchanged. Replayed history must not repeat old notices.
+6. Open History twice, inspect balances/transfers and the settings timeline, leave
+   Party, and open it again. The window is reused; disabling the plugin closes it.
 
 Login to the development client using RuneLite's
 [Using Jagex Accounts](https://github.com/runelite/runelite/wiki/Using-Jagex-Accounts)

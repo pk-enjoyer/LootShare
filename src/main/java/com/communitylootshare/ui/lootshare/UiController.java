@@ -76,6 +76,8 @@ public class UiController implements PanelActions
 	private long viewGeneration;
 	private Panel panel;
 	private PanelState latestState;
+	private HistoryView historyView;
+	private PopoutWindow historyWindow;
 	private SettlementDashboard settlementDashboard;
 	private PopoutWindow settlementWindow;
 
@@ -203,7 +205,7 @@ public class UiController implements PanelActions
 			latestState = null;
 			viewGeneration++;
 		}
-		SwingUtilities.invokeLater(this::disposeSettlementDashboard);
+		SwingUtilities.invokeLater(() -> { disposeSettlementDashboard(); disposeHistory(); });
 	}
 
 	public void refresh()
@@ -239,6 +241,7 @@ public class UiController implements PanelActions
 				}
 				latestState = state;
 				target.render(state);
+				if (historyView != null) { historyView.render(state.getHistory()); }
 				if (settlementDashboard != null)
 				{
 					settlementDashboard.render(state.getSettlement());
@@ -392,6 +395,48 @@ public class UiController implements PanelActions
 	}
 
 	@Override
+	public void applyMySettings(long partyId, long hostMemberId, long revision)
+	{
+		if (!isStarted()) { return; }
+		clientThread.invokeLater(() -> {
+			if (isStarted()) { lootshareController.applyMySettings(partyId, hostMemberId, revision); }
+		});
+	}
+	@Override
+	public void openHistory()
+	{
+		if (!SwingUtilities.isEventDispatchThread()) { SwingUtilities.invokeLater(this::openHistory); return; }
+		if (!isStarted() || popoutWindowFactory == null) { return; }
+		if (historyWindow != null && historyWindow.isDisplayable()) { historyWindow.focus(); return; }
+		disposeHistory();
+		HistoryView view = new HistoryView();
+		if (latestState != null) { view.render(latestState.getHistory()); }
+		boolean[] closed = {false};
+		PopoutWindow window;
+		try
+		{
+			window = popoutWindowFactory.open("Community Lootshare — History", view,
+				new Dimension(760, 480), new Dimension(1040, 640), () -> {
+					closed[0] = true;
+					if (historyView == view) { historyWindow = null; historyView = null; }
+				});
+		}
+		catch (RuntimeException e) { log.debug("Unable to open Community Lootshare history", e); return; }
+		if (window == null || closed[0] || !isStarted())
+		{
+			if (window != null) { window.dispose(); }
+			return;
+		}
+		historyView = view; historyWindow = window;
+	}
+	private void disposeHistory()
+	{
+		PopoutWindow window = historyWindow;
+		historyWindow = null; historyView = null;
+		if (window != null && window.isDisplayable()) { window.dispose(); }
+	}
+
+	@Override
 	public void addManualGp(long memberId, long amount)
 	{
 		if (!isStarted())
@@ -427,7 +472,8 @@ public class UiController implements PanelActions
 		if (!inParty)
 		{
 			return new PanelState(
-				ready, false, null, Collections.emptyList(), previousPartyAvailable);
+				ready, false, null, Collections.emptyList(), previousPartyAvailable, HostedSettings.waiting(), null,
+				SettlementState.empty(), lootshareController.getHistory(), lootshareController.getPersistenceNotice());
 		}
 
 		List<LootProposal> proposals = lootshareController.getActivePartyProposals();
@@ -483,7 +529,8 @@ public class UiController implements PanelActions
 				if (member.getMemberId() == hostMemberId)
 				{
 					hostedSettings = HostedSettings.available(hostMemberId, member.getDisplayName(),
-						member.isLocal(), settings);
+						member.isLocal(), settings, partyService.getPartyId(), lootshareController.getActiveHostRevision(),
+						lootshareController.canApplyMySettings());
 					break;
 				}
 			}
@@ -492,7 +539,7 @@ public class UiController implements PanelActions
 			ready, true, partyService.getPartyPassphrase(), members, previousPartyAvailable,
 			hostedSettings,
 			activeSession == null ? null : activeSession.getSessionId(),
-			buildSettlementState(activeSession, calculation));
+			buildSettlementState(activeSession, calculation), lootshareController.getHistory(), lootshareController.getPersistenceNotice());
 	}
 
 	private MemberLoot buildMember(PartyMember member, String displayName, boolean local, boolean host,

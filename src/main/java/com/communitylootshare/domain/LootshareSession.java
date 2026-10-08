@@ -18,12 +18,24 @@ import java.util.Set;
 
 public final class LootshareSession
 {
+	public static final int MAX_HISTORY_EVENTS = 256;
 	public static final int MAX_ACCEPTED_PROPOSALS = 4096;
 	public static final int MAX_REJECTED_PROPOSALS = 4096;
 	public static final int MAX_MEMBER_APPROVALS = 64;
 	public static final int MAX_DECISION_KEYS = 128;
 	public static final int MAX_DECISION_AUTHORIZATIONS = MAX_ACCEPTED_PROPOSALS + MAX_REJECTED_PROPOSALS;
 	public static final long MAXIMUM_SHARED_LOOT_VALUE = LootshareSettings.MAXIMUM_SHARED_LOOT_VALUE;
+
+	private HostPeriod hostPeriod;
+	private HostPeriod closingPeriod;
+	private LootshareSettings closingSettings;
+	private HostHistoryEvent.Reason closingReason;
+	// Keep the first boundary fields readable from existing schema-8 profiles.
+	private List<ClosingBoundary> queuedClosingPeriods = new ArrayList<>();
+	private List<HostHistoryEvent> historyEvents = new ArrayList<>();
+	private Map<String, HistoryCommitment> historyCommitments = new LinkedHashMap<>();
+	private boolean earlierHistoryOmitted;
+	private boolean earlierHostChainUnknown = true;
 
 	private final String sessionId;
 	private final long partyId;
@@ -136,6 +148,19 @@ public final class LootshareSession
 		copy.setHostState(hostMemberId, getHostSettings(), hostRevision, getMemberApprovalStatuses());
 		copy.trustDecisionKeys(getDecisionKeys());
 		copy.trustDecisionAuthorizations(getDecisionAuthorizations());
+		copy.setHistoryMetadata(hostPeriod, getHistoryCommitments(), earlierHistoryOmitted, earlierHostChainUnknown);
+		if (closingPeriod != null)
+		{
+			copy.markClosingPeriod(closingPeriod, closingSettings, closingReason);
+		}
+		if (queuedClosingPeriods != null)
+		{
+			for (ClosingBoundary boundary : queuedClosingPeriods)
+			{
+				copy.markClosingPeriod(boundary.period, boundary.settings, boundary.reason);
+			}
+		}
+		for (HostHistoryEvent event : getHistoryEvents()) { copy.addHistoryEvent(event, false); }
 		for (LootProposal proposal : acceptedProposals)
 		{
 			copy.addAcceptedProposal(proposal);
@@ -149,6 +174,157 @@ public final class LootshareSession
 			copy.end(endedAt);
 		}
 		return copy;
+	}
+
+	public HostPeriod getHostPeriod() { return hostPeriod; }
+	public HostPeriod getClosingPeriod() { return closingPeriod; }
+	public LootshareSettings getClosingSettings() { return closingSettings; }
+	public HostHistoryEvent.Reason getClosingReason() { return closingReason; }
+	public boolean isEarlierHistoryOmitted() { return earlierHistoryOmitted; }
+	public boolean isEarlierHostChainUnknown() { return earlierHostChainUnknown; }
+	public List<HostHistoryEvent> getHistoryEvents()
+	{
+		return historyEvents == null ? Collections.emptyList() : Collections.unmodifiableList(historyEvents);
+	}
+	public Map<String, HistoryCommitment> getHistoryCommitments()
+	{
+		return historyCommitments == null ? Collections.emptyMap() : Collections.unmodifiableMap(historyCommitments);
+	}
+
+	/** Merge only metadata vouched for by the current transport authority. */
+	public void setHistoryMetadata(HostPeriod period, Map<String, HistoryCommitment> incoming,
+	                               boolean omitted, boolean unknown)
+	{
+		HostPeriod validatedPeriod = period == null ? null : period.validatedCopy();
+		if (validatedPeriod != null && ((hostMemberId > 0 && validatedPeriod.getHostMemberId() != hostMemberId) || validatedPeriod.getEndedAt() != null))
+		{
+			throw new IllegalArgumentException("Period does not identify the active host");
+		}
+		if (incoming == null || incoming.size() > MAX_HISTORY_EVENTS)
+		{
+			throw new IllegalArgumentException("Too many history commitments");
+		}
+		Map<String, HistoryCommitment> merged = new LinkedHashMap<>(getHistoryCommitments());
+		for (Map.Entry<String, HistoryCommitment> entry : incoming.entrySet())
+		{
+			HostPeriod.validateId(entry.getKey());
+			HistoryCommitment anchor = entry.getValue().validatedCopy();
+			if (anchor.getRevision() > hostRevision || (merged.containsKey(entry.getKey()) && !merged.get(entry.getKey()).equals(anchor)))
+			{
+				throw new IllegalArgumentException("Conflicting history commitment");
+			}
+			merged.put(entry.getKey(), anchor);
+		}
+		List<String> ordered = new ArrayList<>(merged.keySet());
+		ordered.sort(java.util.Comparator.comparingLong((String id) -> merged.get(id).getRevision()).thenComparing(id -> id));
+		boolean pruned = ordered.size() > MAX_HISTORY_EVENTS;
+		while (ordered.size() > MAX_HISTORY_EVENTS) { merged.remove(ordered.remove(0)); }
+		historyCommitments = merged;
+		if (historyEvents != null) { historyEvents.removeIf(event -> !merged.containsKey(event.getEventId())); }
+		hostPeriod = validatedPeriod;
+		earlierHistoryOmitted |= omitted || pruned;
+		earlierHostChainUnknown = unknown;
+	}
+
+	public boolean addHistoryEvent(HostHistoryEvent event)
+	{
+		return addHistoryEvent(event, true);
+	}
+	/** Verify at load/import boundaries; immutable in-memory snapshots need no repeated ECDSA work. */
+	public void validateHistorySignatures()
+	{
+		for (HostHistoryEvent event : getHistoryEvents())
+		{
+			if (!event.verifies()) { throw new IllegalArgumentException("Invalid history signature"); }
+		}
+	}
+	private boolean addHistoryEvent(HostHistoryEvent event, boolean verifySignature)
+	{
+		HostHistoryEvent validated = event.validatedCopy();
+		HistoryCommitment anchor = getHistoryCommitments().get(validated.getEventId());
+		if (validated.getPartyId() != partyId || anchor == null || anchor.getRevision() != validated.getRevision()
+			|| !anchor.getHash().equals(validated.commitment()) || (verifySignature && !validated.verifies())
+			|| !validated.getReceipt().isTrustedBy(getDecisionKeys()))
+		{
+			throw new IllegalArgumentException("Uncommitted or invalid history event");
+		}
+		for (HostHistoryEvent existing : getHistoryEvents())
+		{
+			if (existing.getEventId().equals(validated.getEventId()))
+			{
+				if (!existing.commitment().equals(validated.commitment())) { throw new IllegalArgumentException("Conflicting history event"); }
+				return false;
+			}
+		}
+		if (historyEvents == null) { historyEvents = new ArrayList<>(); }
+		historyEvents.add(validated);
+		historyEvents.sort(java.util.Comparator.comparingLong(HostHistoryEvent::getRevision).thenComparing(HostHistoryEvent::getEventId));
+		if (validated.getKind() == HostHistoryEvent.Kind.PERIOD_CLOSED)
+		{
+			removeClosingPeriod(validated.getPeriod().getPeriodId());
+		}
+		return true;
+	}
+
+	public void markClosingPeriod(HostPeriod period, LootshareSettings settings, HostHistoryEvent.Reason reason)
+	{
+		if (period == null || period.getEndedAt() == null || settings == null || reason == null || reason == HostHistoryEvent.Reason.SETTINGS)
+		{
+			throw new IllegalArgumentException("Invalid host boundary");
+		}
+		HostPeriod validatedPeriod = period.validatedCopy();
+		LootshareSettings validatedSettings = settings.validatedCopy();
+		String id = validatedPeriod.getPeriodId();
+		if ((closingPeriod != null && closingPeriod.getPeriodId().equals(id))
+			|| getHistoryEvents().stream().anyMatch(event -> event.getKind() == HostHistoryEvent.Kind.PERIOD_CLOSED
+				&& event.getPeriod().getPeriodId().equals(id))) { return; }
+		if (queuedClosingPeriods == null) { queuedClosingPeriods = new ArrayList<>(); }
+		if (queuedClosingPeriods.stream().anyMatch(boundary -> boundary.period.getPeriodId().equals(id))) { return; }
+		if (closingPeriod == null)
+		{
+			closingPeriod = validatedPeriod;
+			closingSettings = validatedSettings;
+			closingReason = reason;
+		}
+		else
+		{
+			if (queuedClosingPeriods.size() >= MAX_HISTORY_EVENTS - 1)
+			{
+				throw new IllegalArgumentException("Too many pending host boundaries");
+			}
+			queuedClosingPeriods.add(new ClosingBoundary(validatedPeriod, validatedSettings, reason));
+		}
+	}
+
+	private void removeClosingPeriod(String periodId)
+	{
+		if (queuedClosingPeriods != null)
+		{
+			queuedClosingPeriods.removeIf(boundary -> boundary.period.getPeriodId().equals(periodId));
+		}
+		if (closingPeriod != null && closingPeriod.getPeriodId().equals(periodId)) { clearClosingPeriod(); }
+	}
+
+	public void clearClosingPeriod()
+	{
+		closingPeriod = null; closingSettings = null; closingReason = null;
+		if (queuedClosingPeriods != null && !queuedClosingPeriods.isEmpty())
+		{
+			ClosingBoundary next = queuedClosingPeriods.remove(0);
+			closingPeriod = next.period; closingSettings = next.settings; closingReason = next.reason;
+		}
+	}
+
+	private static final class ClosingBoundary
+	{
+		private final HostPeriod period;
+		private final LootshareSettings settings;
+		private final HostHistoryEvent.Reason reason;
+
+		private ClosingBoundary(HostPeriod period, LootshareSettings settings, HostHistoryEvent.Reason reason)
+		{
+			this.period = period; this.settings = settings; this.reason = reason;
+		}
 	}
 
 	public void replaceFinalizedProposal(LootProposal proposal)
@@ -333,6 +509,7 @@ public final class LootshareSession
 			throw new IllegalArgumentException("Host state contains too many member approvals");
 		}
 		LootshareSettings validatedSettings = hostSettings.validatedCopy();
+		if (hostPeriod != null && hostMemberId > 0 && hostPeriod.getHostMemberId() != hostMemberId) { hostPeriod = null; }
 		this.hostMemberId = hostMemberId;
 		this.minimumSharedLootValue = validatedSettings.getMinimumSharedLootValue();
 		this.hostSettings = validatedSettings;

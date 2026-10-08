@@ -6,6 +6,9 @@
 package com.communitylootshare.sessions;
 
 import com.communitylootshare.domain.LootshareState;
+import com.communitylootshare.domain.HostPeriod;
+import com.communitylootshare.domain.HostHistoryEvent;
+import com.communitylootshare.domain.HistoryCommitment;
 import com.communitylootshare.domain.LootProposal;
 import com.communitylootshare.domain.LootProposalStatus;
 import com.communitylootshare.domain.LootshareParticipant;
@@ -74,6 +77,7 @@ public class LootshareEngine
 			}
 			try
 			{
+				persisted.validateHistorySignatures();
 				LootshareSession session = persisted.snapshot();
 				if (findSession(session.getSessionId()) != null)
 				{
@@ -208,6 +212,9 @@ public class LootshareEngine
 							session.getHostRevision(), session.getMemberApprovalStatuses());
 						resumed.trustDecisionKeys(session.getDecisionKeys());
 						resumed.trustDecisionAuthorizations(session.getDecisionAuthorizations());
+						resumed.setHistoryMetadata(session.getHostPeriod(), session.getHistoryCommitments(),
+							session.isEarlierHistoryOmitted(), session.isEarlierHostChainUnknown());
+						for (HostHistoryEvent event : session.getHistoryEvents()) { resumed.addHistoryEvent(event); }
 					}
 				}
 			}
@@ -362,6 +369,140 @@ public class LootshareEngine
 
 		active.setHostState(nextHostMemberId, validatedSettings, revision, validatedApprovalStatuses);
 		return MutationResult.APPLIED;
+	}
+
+	/** Validate authority, policy, and history metadata together before committing any state. */
+	public synchronized MutationResult updateHostSnapshot(long actor, long host, LootshareSettings settings,
+		long revision, Map<Long, MemberApprovalStatus> approvals, HostPeriod period,
+		Map<String, HistoryCommitment> commitments, boolean omitted, boolean unknown)
+	{
+		LootshareSession active = activeSession();
+		if (active == null) { return MutationResult.NO_ACTIVE_SESSION; }
+		try
+		{
+			LootshareSession copy = active.snapshot();
+			copy.setHostState(host, settings, revision, approvals);
+			copy.setHistoryMetadata(period, commitments, omitted, unknown);
+			if (revision == active.getHostRevision() && active.getHostPeriod() != null
+				&& period != null && !active.getHostPeriod().equals(period)) { return MutationResult.CONFLICT; }
+			boolean metadataChanged = !java.util.Objects.equals(active.getHostPeriod(), copy.getHostPeriod())
+				|| !active.getHistoryCommitments().equals(copy.getHistoryCommitments())
+				|| active.isEarlierHistoryOmitted() != copy.isEarlierHistoryOmitted()
+				|| active.isEarlierHostChainUnknown() != copy.isEarlierHostChainUnknown();
+			MutationResult result = updateHostState(actor, host, settings, revision, approvals);
+			if (result == MutationResult.APPLIED || result == MutationResult.DUPLICATE)
+			{
+				active.setHistoryMetadata(period, commitments, omitted, unknown);
+				if (metadataChanged) { return MutationResult.APPLIED; }
+			}
+			return result;
+		}
+		catch (RuntimeException e) { return MutationResult.INVALID; }
+	}
+
+	public synchronized void setHostPeriod(HostPeriod period, boolean unknown)
+	{
+		LootshareSession active = activeSession();
+		if (active != null) { active.setHistoryMetadata(period, active.getHistoryCommitments(), active.isEarlierHistoryOmitted(), unknown); }
+	}
+	public synchronized void markHostBoundary(Instant at, HostHistoryEvent.Reason reason)
+	{
+		LootshareSession active = activeSession();
+		if (active != null && active.getHostPeriod() != null)
+		{
+			HostPeriod period = active.getHostPeriod();
+			active.markClosingPeriod(period.end(at.isBefore(period.getStartedAt()) ? period.getStartedAt() : at), active.getHostSettings(), reason);
+		}
+	}
+	public synchronized boolean commitHistoryEvent(HostHistoryEvent event)
+	{
+		LootshareSession active = activeSession();
+		if (active == null || event == null) { return false; }
+		try
+		{
+			LootshareSession copy = active.snapshot();
+			boolean changed = stageHistoryEvent(copy, event);
+			if (changed) { sessions.set(sessions.indexOf(active), copy); }
+			return changed;
+		}
+		catch (RuntimeException e) { return false; }
+	}
+
+	private static boolean stageHistoryEvent(LootshareSession copy, HostHistoryEvent event)
+	{
+		Map<String, HistoryCommitment> anchors = new LinkedHashMap<>(copy.getHistoryCommitments());
+		HistoryCommitment anchor = new HistoryCommitment(event.getRevision(), event.commitment());
+		HistoryCommitment existing = anchors.get(event.getEventId());
+		if (existing != null && !existing.equals(anchor)) { throw new IllegalArgumentException("Conflicting history event"); }
+		boolean pruned = anchors.size() >= LootshareSession.MAX_HISTORY_EVENTS && existing == null;
+		if (pruned)
+		{
+			String oldest = anchors.keySet().stream().min(java.util.Comparator
+				.comparingLong((String id) -> anchors.get(id).getRevision()).thenComparing(id -> id)).get();
+			anchors.remove(oldest);
+		}
+		anchors.put(event.getEventId(), anchor);
+		copy.setHistoryMetadata(copy.getHostPeriod(), anchors, pruned || copy.isEarlierHistoryOmitted(), copy.isEarlierHostChainUnknown());
+		return copy.addHistoryEvent(event);
+	}
+
+	public synchronized MutationResult applySettingsWithHistory(long actor, long expectedRevision,
+		LootshareSettings settings, HostHistoryEvent event)
+	{
+		LootshareSession active = activeSession();
+		if (active == null) { return MutationResult.NO_ACTIVE_SESSION; }
+		if (actor != active.getHostMemberId()) { return MutationResult.NOT_HOST; }
+		if (expectedRevision != active.getHostRevision()) { return MutationResult.CONFLICT; }
+		try
+		{
+			if (event == null || event.getRevision() != Math.addExact(expectedRevision, 1L)
+				|| event.getKind() != HostHistoryEvent.Kind.SETTINGS_APPLIED
+				|| !event.getOldSettings().equals(active.getHostSettings()) || !event.getNewSettings().equals(settings)
+				|| !event.getPeriod().equals(active.getHostPeriod()) || event.getReceipt() == null
+				|| event.getReceipt().getSignerMemberId() != actor) { return MutationResult.INVALID; }
+			LootshareSession copy = active.snapshot();
+			copy.setHostState(actor, settings, event.getRevision());
+			if (!stageHistoryEvent(copy, event)) { return MutationResult.DUPLICATE; }
+			sessions.set(sessions.indexOf(active), copy);
+			return MutationResult.APPLIED;
+		}
+		catch (RuntimeException e) { return MutationResult.INVALID; }
+	}
+
+	/** The checkpoint and authority change are one mutation, so a crash cannot leave a closed active tenure. */
+	public synchronized MutationResult transferHostWithHistory(long actor, long nextHost, long expectedRevision,
+		HostPeriod nextPeriod, HostHistoryEvent event)
+	{
+		LootshareSession active = activeSession();
+		if (active == null) { return MutationResult.NO_ACTIVE_SESSION; }
+		if (actor != active.getHostMemberId()) { return MutationResult.NOT_HOST; }
+		if (expectedRevision != active.getHostRevision()) { return MutationResult.CONFLICT; }
+		try
+		{
+			if (nextHost <= 0 || nextHost == actor || nextPeriod == null || nextPeriod.getHostMemberId() != nextHost
+				|| event == null || event.getRevision() != Math.addExact(expectedRevision, 1L)
+				|| event.getKind() != HostHistoryEvent.Kind.PERIOD_CLOSED || event.getReason() != HostHistoryEvent.Reason.TRANSFER
+				|| active.getHostPeriod() == null || !event.getPeriod().equals(active.getHostPeriod().end(event.getOccurredAt()))
+				|| !event.getOldSettings().equals(active.getHostSettings()) || !event.getNewSettings().equals(active.getHostSettings())
+				|| !active.getHostPeriod().getPeriodId().equals(nextPeriod.getPredecessorId())
+				|| nextPeriod.getStartedAt().isBefore(event.getOccurredAt()) || event.getReceipt() == null
+				|| event.getReceipt().getSignerMemberId() != actor) { return MutationResult.INVALID; }
+			LootshareSession copy = active.snapshot();
+			copy.setHostState(nextHost, active.getHostSettings(), event.getRevision());
+			copy.setHistoryMetadata(nextPeriod, copy.getHistoryCommitments(), copy.isEarlierHistoryOmitted(), copy.isEarlierHostChainUnknown());
+			if (!stageHistoryEvent(copy, event)) { return MutationResult.CONFLICT; }
+			sessions.set(sessions.indexOf(active), copy);
+			return MutationResult.APPLIED;
+		}
+		catch (RuntimeException e) { return MutationResult.INVALID; }
+	}
+
+	public synchronized MutationResult importHistoryEvent(HostHistoryEvent event)
+	{
+		LootshareSession active = activeSession();
+		if (active == null) { return MutationResult.NO_ACTIVE_SESSION; }
+		try { return active.addHistoryEvent(event) ? MutationResult.APPLIED : MutationResult.DUPLICATE; }
+		catch (RuntimeException e) { return MutationResult.INVALID; }
 	}
 
 	public synchronized MutationResult updateMemberApprovalStatus(long actingMemberId, long targetMemberId,

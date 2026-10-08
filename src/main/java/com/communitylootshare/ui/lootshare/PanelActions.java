@@ -18,6 +18,9 @@ public interface PanelActions
 
 	void leaveParty();
 
+	default void applyMySettings(long partyId, long hostMemberId, long revision) { }
+	default void openHistory() { }
+
 	default void transferHost(long memberId)
 	{
 	}

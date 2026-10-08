@@ -189,6 +189,21 @@ public class LootshareStorage
 		}
 	}
 
+	public List<com.communitylootshare.party.HistoryMessage> historyMessages(
+		com.communitylootshare.domain.HostHistoryEvent event, long target, boolean live)
+	{
+		return com.communitylootshare.party.HistoryMessage.chunks(event, target, live, gson);
+	}
+	public Optional<com.communitylootshare.domain.HostHistoryEvent> decodeHistory(String json)
+	{
+		try
+		{
+			com.communitylootshare.domain.HostHistoryEvent event = gson.fromJson(json, com.communitylootshare.domain.HostHistoryEvent.class);
+			return event == null ? Optional.empty() : Optional.of(event.validatedCopy());
+		}
+		catch (RuntimeException e) { return Optional.empty(); }
+	}
+
 	public synchronized void rememberHostState(long partyId, HostMessage message)
 	{
 		String json = gson.toJson(message);
@@ -291,6 +306,13 @@ public class LootshareStorage
 				log.warn("Community Lootshare history uses unsupported schema {}", state.getSchemaVersion());
 				return LoadResult.readOnly(new LootshareState());
 			}
+			if (state.getSchemaVersion() < 8)
+			{
+				for (LootshareSession session : state.getSessions())
+				{
+					session.setHistoryMetadata(session.getHostPeriod(), session.getHistoryCommitments(), session.isEarlierHistoryOmitted(), true);
+				}
+			}
 			validateState(state);
 			return LoadResult.writable(state);
 		}
@@ -374,6 +396,17 @@ public class LootshareStorage
 				}
 				allRecords.add(proposal);
 			}
+			if (persisted.getHistoryEvents().size() > LootshareSession.MAX_HISTORY_EVENTS
+				|| persisted.getHistoryCommitments().size() > LootshareSession.MAX_HISTORY_EVENTS)
+			{
+				throw new IllegalArgumentException("Too much host history");
+			}
+			Set<String> historyIds = new HashSet<>();
+			for (com.communitylootshare.domain.HostHistoryEvent event : persisted.getHistoryEvents())
+			{
+				if (!historyIds.add(event.getEventId())) { throw new IllegalArgumentException("Duplicate history event"); }
+			}
+			persisted.validateHistorySignatures();
 			LootshareSession session = persisted.snapshot();
 			Map<String, Long> partyKeys = decisionKeys.computeIfAbsent(session.getPartyId(), ignored -> new HashMap<>());
 			for (Map.Entry<String, Long> key : session.getDecisionKeys().entrySet())

@@ -247,6 +247,8 @@ public class LootshareControllerTest
 
 		when(config.minimumSharedLootValue()).thenReturn(0);
 		controller.onMinimumSharedLootValueChanged();
+		assertEquals(0L, controller.getActiveCalculation().getTotalAcceptedValue());
+		assertEquals(MutationResult.APPLIED, controller.applyMySettings(localMember.getMemberId(), controller.getActiveHostRevision()));
 
 		assertEquals(50L, controller.getActiveCalculation().getTotalAcceptedValue());
 		assertEquals(0L, engine.getActiveMinimumSharedLootValue());
@@ -261,11 +263,12 @@ public class LootshareControllerTest
 		assertEquals(MutationResult.INVALID, controller.transferHost(localMember.getMemberId()));
 		assertEquals(MutationResult.APPLIED, controller.transferHost(remoteMember.getMemberId()));
 		assertEquals(remoteMember.getMemberId(), controller.getActiveHostMemberId());
-		ArgumentCaptor<HostMessage> transferMessage =
-			ArgumentCaptor.forClass(HostMessage.class);
-		verify(partyService).send(transferMessage.capture());
-		transferMessage.getValue().setMemberId(localMember.getMemberId());
-		HostMessage.DecodedHostState transferred = transferMessage.getValue().decode().get();
+		HostMessage transferMessage = org.mockito.Mockito.mockingDetails(partyService).getInvocations().stream()
+			.filter(i -> i.getMethod().getName().equals("send") && i.getArgument(0) instanceof HostMessage)
+			.map(i -> (HostMessage) i.getArgument(0)).filter(m -> m.getHostMemberId() == remoteMember.getMemberId())
+			.reduce((a, b) -> b).get();
+		transferMessage.setMemberId(localMember.getMemberId());
+		HostMessage.DecodedHostState transferred = transferMessage.decode().get();
 		assertEquals(remoteMember.getMemberId(), transferred.getHostMemberId());
 		assertEquals(MemberApprovalStatus.APPROVED,
 			transferred.getApprovalStatuses().get(remoteMember.getMemberId()));
@@ -410,6 +413,7 @@ public class LootshareControllerTest
 		remoteMember.setLoggedIn(false);
 		when(config.includeLoggedOutMembers()).thenReturn(true);
 		controller.onLocalConfigurationChanged();
+		assertEquals(MutationResult.APPLIED, controller.applyMySettings(localMember.getMemberId(), controller.getActiveHostRevision()));
 		assertEquals(MutationResult.APPLIED,
 			controller.setMemberApproved(remoteMember.getMemberId(), true));
 		List<ItemStack> stacks = Collections.singletonList(new ItemStack(100, 1));

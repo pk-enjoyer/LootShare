@@ -6,6 +6,7 @@
 package com.communitylootshare.ui.lootshare;
 
 import com.communitylootshare.domain.LootshareSettings;
+import com.communitylootshare.domain.LootshareSession;
 import com.communitylootshare.domain.MemberApprovalStatus;
 import com.communitylootshare.views.graph.SessionGraphMode;
 import com.communitylootshare.views.graph.SessionGraphSnapshot;
@@ -22,6 +23,8 @@ import java.util.Objects;
  */
 public final class PanelState
 {
+	private final List<LootshareSession> history;
+	private final String persistenceNotice;
 	private final boolean ready;
 	private final boolean inParty;
 	private final String partyPassphrase;
@@ -57,6 +60,15 @@ public final class PanelState
 	                                    HostedSettings hostedSettings,
 	                                    String sessionId, SettlementState settlement)
 	{
+		this(ready, inParty, partyPassphrase, members, previousPartyAvailable, hostedSettings, sessionId, settlement,
+			Collections.emptyList(), null);
+	}
+	public PanelState(boolean ready, boolean inParty, String partyPassphrase, List<MemberLoot> members,
+		boolean previousPartyAvailable, HostedSettings hostedSettings, String sessionId, SettlementState settlement,
+		List<LootshareSession> history, String persistenceNotice)
+	{
+		this.history = Collections.unmodifiableList(new ArrayList<>(history));
+		this.persistenceNotice = persistenceNotice;
 		this.ready = ready;
 		this.inParty = inParty;
 		this.partyPassphrase = partyPassphrase;
@@ -65,6 +77,14 @@ public final class PanelState
 		this.hostedSettings = Objects.requireNonNull(hostedSettings, "hostedSettings");
 		this.sessionId = sessionId;
 		this.settlement = Objects.requireNonNull(settlement, "settlement");
+	}
+
+	public List<LootshareSession> getHistory() { return history; }
+	public String getPersistenceNotice() { return persistenceNotice; }
+	public boolean hasHistory()
+	{
+		return history.stream().anyMatch(session -> session.getHostPeriod() != null || !session.getHistoryEvents().isEmpty()
+			|| !session.getAcceptedProposals().isEmpty() || session.getHostRevision() > 0);
 	}
 
 	public boolean isReady()
@@ -260,6 +280,9 @@ public final class PanelState
 
 	public static final class HostedSettings
 	{
+		private final long partyId;
+		private final long revision;
+		private final boolean applyEnabled;
 		private final boolean available;
 		private final long hostMemberId;
 		private final String hostDisplayName;
@@ -267,13 +290,14 @@ public final class PanelState
 		private final LootshareSettings settings;
 
 		private HostedSettings(boolean available, long hostMemberId, String hostDisplayName,
-		                       boolean localHost, LootshareSettings settings)
+		                       boolean localHost, LootshareSettings settings, long partyId, long revision, boolean applyEnabled)
 		{
 			if (available && (hostMemberId <= 0L || hostDisplayName == null
 				|| hostDisplayName.trim().isEmpty() || settings == null))
 			{
 				throw new IllegalArgumentException("Available host settings require a host and settings snapshot");
 			}
+			this.partyId = partyId; this.revision = revision; this.applyEnabled = available && localHost && applyEnabled;
 			this.available = available;
 			this.hostMemberId = available ? hostMemberId : 0L;
 			this.hostDisplayName = available ? hostDisplayName.trim() : null;
@@ -283,14 +307,23 @@ public final class PanelState
 
 		public static HostedSettings waiting()
 		{
-			return new HostedSettings(false, 0L, null, false, null);
+			return new HostedSettings(false, 0L, null, false, null, 0L, 0L, false);
 		}
 
 		public static HostedSettings available(long hostMemberId, String hostDisplayName,
 		                                       boolean localHost, LootshareSettings settings)
 		{
-			return new HostedSettings(true, hostMemberId, hostDisplayName, localHost, settings);
+			return new HostedSettings(true, hostMemberId, hostDisplayName, localHost, settings, 0L, 0L, false);
 		}
+
+		public static HostedSettings available(long hostMemberId, String hostDisplayName, boolean localHost,
+			LootshareSettings settings, long partyId, long revision, boolean applyEnabled)
+		{
+			return new HostedSettings(true, hostMemberId, hostDisplayName, localHost, settings, partyId, revision, applyEnabled);
+		}
+		public long getPartyId() { return partyId; }
+		public long getRevision() { return revision; }
+		public boolean isApplyEnabled() { return applyEnabled; }
 
 		public boolean isAvailable()
 		{

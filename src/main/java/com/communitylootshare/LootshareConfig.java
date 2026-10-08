@@ -25,8 +25,8 @@ public interface LootshareConfig extends Config
 
 	@ConfigSection(
 		name = "Hosted party settings",
-		description = "Your saved values become authoritative while you host. While you are a guest, "
-			+ "Community Lootshare uses the host's values without overwriting yours.",
+		description = "Saved preferences for a fresh Party or the host-only Apply my settings button. "
+			+ "Host changes inherit the effective Party settings. Editing preferences does not change them.",
 		position = 0
 	)
 	String HOSTED_PARTY_SETTINGS = "hostedPartySettings";
@@ -37,7 +37,7 @@ public interface LootshareConfig extends Config
 		keyName = MINIMUM_SHARED_LOOT_VALUE_KEY,
 		name = "Minimum shared loot value",
 		description = "Minimum total drop value included in split calculations. All enabled drops are still captured "
-			+ "and shared. Only the current party host's setting is used.",
+			+ "and shared. Use Apply my settings to update the Party and recalculate running balances.",
 		position = 0,
 		section = HOSTED_PARTY_SETTINGS
 	)

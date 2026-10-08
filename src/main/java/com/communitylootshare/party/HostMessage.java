@@ -6,6 +6,8 @@
 package com.communitylootshare.party;
 
 import com.communitylootshare.domain.LootValueBasis;
+import com.communitylootshare.domain.HostPeriod;
+import com.communitylootshare.domain.HistoryCommitment;
 import com.communitylootshare.domain.LootshareSession;
 import com.communitylootshare.domain.LootshareSettings;
 import com.communitylootshare.domain.MemberApprovalStatus;
@@ -26,7 +28,12 @@ import net.runelite.client.party.messages.PartyMemberMessage;
  */
 public class HostMessage extends PartyMemberMessage
 {
-	public static final int PROTOCOL_VERSION = 6;
+	public static final int PROTOCOL_VERSION = 7;
+
+	private PeriodMetadata hostPeriod;
+	private Map<String, HistoryCommitment> historyCommitments = new LinkedHashMap<>();
+	private boolean earlierHistoryOmitted;
+	private boolean earlierHostChainUnknown = true;
 
 	private int protocolVersion = PROTOCOL_VERSION;
 	private long hostMemberId;
@@ -103,6 +110,16 @@ public class HostMessage extends PartyMemberMessage
 		this.decisionAuthorizations = validateDecisionAuthorizations(decisionAuthorizations);
 	}
 
+	public HostMessage(LootshareSession session)
+	{
+		this(session.getHostMemberId(), session.getHostSettings(), session.getHostRevision(),
+			session.getMemberApprovalStatuses(), session.getDecisionKeys(), session.getDecisionAuthorizations());
+		hostPeriod = session.getHostPeriod() == null ? null : new PeriodMetadata(session.getHostPeriod());
+		historyCommitments = session.getHistoryCommitments();
+		earlierHistoryOmitted = session.isEarlierHistoryOmitted();
+		earlierHostChainUnknown = session.isEarlierHostChainUnknown();
+	}
+
 	private static Set<String> validateDecisionAuthorizations(Collection<String> authorizations)
 	{
 		LootshareSession validation = new LootshareSession("authorizations", 1L, java.time.Instant.EPOCH);
@@ -149,7 +166,7 @@ public class HostMessage extends PartyMemberMessage
 
 	public Optional<DecodedHostState> decode()
 	{
-		if ((protocolVersion != 3 && protocolVersion != 4 && protocolVersion != 5 && protocolVersion != PROTOCOL_VERSION) || getMemberId() <= 0L
+		if ((protocolVersion != 3 && protocolVersion != 4 && protocolVersion != 5 && protocolVersion != 6 && protocolVersion != PROTOCOL_VERSION) || getMemberId() <= 0L
 			|| hostMemberId <= 0L || revision <= 0L || minimumSharedLootValue == null
 			|| captureNpcLoot == null || captureEventLoot == null || capturePlayerLoot == null
 			|| capturePickpocketLoot == null || captureUnknownLoot == null
@@ -181,8 +198,15 @@ public class HostMessage extends PartyMemberMessage
 			}
 			approvals = validateApprovals(hostMemberId, approvals);
 			Map<String, Long> keys = protocolVersion < 5 ? Collections.emptyMap() : validateDecisionKeys(decisionKeys);
+			LootshareSession validation = new LootshareSession("history-metadata", 1L, java.time.Instant.EPOCH);
+			validation.setHostState(hostMemberId, settings, revision, approvals);
+			if (protocolVersion >= 7)
+			{
+				validation.setHistoryMetadata(hostPeriod == null ? null : hostPeriod.decode(), historyCommitments, earlierHistoryOmitted, earlierHostChainUnknown);
+			}
 			return Optional.of(new DecodedHostState(hostMemberId, settings, revision, approvals, keys,
-				protocolVersion < 6 ? Collections.emptySet() : validateDecisionAuthorizations(decisionAuthorizations)));
+				protocolVersion < 6 ? Collections.emptySet() : validateDecisionAuthorizations(decisionAuthorizations), validation.getHostPeriod(),
+				validation.getHistoryCommitments(), validation.isEarlierHistoryOmitted(), validation.isEarlierHostChainUnknown()));
 		}
 		catch (IllegalArgumentException | NullPointerException ignored)
 		{
@@ -215,6 +239,27 @@ public class HostMessage extends PartyMemberMessage
 		return revision;
 	}
 
+	/** Transport times are scalars so HostMessage does not require a Gson Instant adapter. */
+	private static final class PeriodMetadata
+	{
+		private String periodId;
+		private long hostMemberId;
+		private String hostDisplayName;
+		private String predecessorId;
+		private Long startedAt;
+		private PeriodMetadata(HostPeriod period)
+		{
+			periodId = period.getPeriodId(); hostMemberId = period.getHostMemberId();
+			hostDisplayName = period.getHostDisplayName(); predecessorId = period.getPredecessorId();
+			startedAt = period.getStartedAt().toEpochMilli();
+		}
+		private HostPeriod decode()
+		{
+			if (startedAt == null) { throw new IllegalArgumentException("Missing period start"); }
+			return new HostPeriod(periodId, hostMemberId, hostDisplayName, predecessorId, java.time.Instant.ofEpochMilli(startedAt), null);
+		}
+	}
+
 	private static final class MemberApproval
 	{
 		private long memberId;
@@ -238,6 +283,10 @@ public class HostMessage extends PartyMemberMessage
 
 	public static final class DecodedHostState
 	{
+		private final HostPeriod hostPeriod;
+		private final Map<String, HistoryCommitment> historyCommitments;
+		private final boolean earlierHistoryOmitted;
+		private final boolean earlierHostChainUnknown;
 		private final long hostMemberId;
 		private final LootshareSettings settings;
 		private final long revision;
@@ -246,8 +295,13 @@ public class HostMessage extends PartyMemberMessage
 		private final Set<String> decisionAuthorizations;
 
 		private DecodedHostState(long hostMemberId, LootshareSettings settings, long revision,
-		                         Map<Long, MemberApprovalStatus> approvalStatuses, Map<String, Long> decisionKeys, Set<String> decisionAuthorizations)
+		                         Map<Long, MemberApprovalStatus> approvalStatuses, Map<String, Long> decisionKeys, Set<String> decisionAuthorizations,
+		                         HostPeriod period, Map<String, HistoryCommitment> commitments, boolean omitted, boolean unknown)
 		{
+			this.hostPeriod = period;
+			this.historyCommitments = Collections.unmodifiableMap(new LinkedHashMap<>(commitments));
+			this.earlierHistoryOmitted = omitted;
+			this.earlierHostChainUnknown = unknown;
 			this.hostMemberId = hostMemberId;
 			this.settings = settings.validatedCopy();
 			this.revision = revision;
@@ -255,6 +309,11 @@ public class HostMessage extends PartyMemberMessage
 			this.decisionKeys = Collections.unmodifiableMap(new LinkedHashMap<>(decisionKeys));
 			this.decisionAuthorizations = Collections.unmodifiableSet(new LinkedHashSet<>(decisionAuthorizations));
 		}
+
+		public HostPeriod getHostPeriod() { return hostPeriod; }
+		public Map<String, HistoryCommitment> getHistoryCommitments() { return historyCommitments; }
+		public boolean isEarlierHistoryOmitted() { return earlierHistoryOmitted; }
+		public boolean isEarlierHostChainUnknown() { return earlierHostChainUnknown; }
 
 		public long getHostMemberId()
 		{
