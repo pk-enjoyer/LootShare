@@ -143,31 +143,31 @@ public class LootsharePlugin extends Plugin
 	}
 
 	@Subscribe
-	public void onCommunityLootshareProposalMessage(ProposalMessage message)
+	public void onProposalMessage(ProposalMessage message)
 	{
 		controller.onProposalMessage(message);
 	}
 
 	@Subscribe
-	public void onCommunityLootshareDecisionMessage(DecisionMessage message)
+	public void onDecisionMessage(DecisionMessage message)
 	{
 		controller.onDecisionMessage(message);
 	}
 
 	@Subscribe
-	public void onCommunityLootshareHostMessage(HostMessage message)
+	public void onHostMessage(HostMessage message)
 	{
 		controller.onHostMessage(message);
 	}
 
 	@Subscribe
-	public void onCommunityLootshareHistoryMessage(HistoryMessage message)
+	public void onHistoryMessage(HistoryMessage message)
 	{
 		controller.onHistoryMessage(message);
 	}
 
 	@Subscribe
-	public void onCommunityLootshareRecoveryMessage(RecoveryMessage message)
+	public void onRecoveryMessage(RecoveryMessage message)
 	{
 		controller.onRecoveryMessage(message);
 	}

@@ -40,6 +40,14 @@ experiment classes are absent from the plugin and shadow jars. The manual
 launcher task graph was checked without starting RuneLite; live validation is
 still pending.
 
+The first manual launch subsequently opened RuneLite and loaded the probe, but
+exposed a pre-existing Lootshare startup error: five Party subscribers used
+`onCommunityLootshare...` names instead of EventBus-required `on<EventClass>`
+names. Those handlers are now renamed and a real EventBus registration regression
+test is included in the normal suite. The optional PR suite now passes 175 tests.
+The already-running client needs a restart to load the correction; live gameplay
+confirmation is still pending.
+
 ## Prepare and run automated checks
 
 Clone outside this repository and pin the reviewed revision:
