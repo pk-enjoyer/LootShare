@@ -235,6 +235,10 @@ Java 21 JDK because the pinned Lombok version does not compile under Java 25:
 env JAVA_HOME=/usr/lib/jvm/java-21-temurin-jdk ./gradlew test
 ```
 
+For the unreleased Party Data Service proposal, see the
+[PR #20544 experiment](docs/runelite-party-data-20544.md) for its impact,
+unit-test compatibility checks, and an opt-in development client probe.
+
 Other useful commands are:
 
 ```sh
