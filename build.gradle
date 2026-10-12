@@ -90,8 +90,10 @@ jacocoTestCoverageVerification {
 check.dependsOn jacocoTestCoverageVerification
 
 def isRuneLiteClientJar = { File file ->
-	file.name ==~ /client-\d+\.\d+\.\d+(\.\d+)?(-\d{8}\.\d{6}-\d+)?\.jar/ &&
-		file.absolutePath.contains('/net.runelite/client/')
+	configurations.testRuntimeClasspath.resolvedConfiguration.resolvedArtifacts.any { artifact ->
+		artifact.moduleVersion.id.group == 'net.runelite' &&
+			artifact.name == 'client' && artifact.file == file
+	}
 }
 
 def runeLiteClientJar = {
@@ -161,4 +163,8 @@ tasks.register('shadowJar', Jar) {
 	description = 'Build a runnable Community Lootshare development-client jar.'
 	archiveClassifier.set('shadow')
 	archiveFileName.set("${rootProject.name}-${project.version}-all.jar")
+}
+
+if (providers.gradleProperty('partyDataExperiment').isPresent()) {
+	apply from: 'gradle/party-data-experiment.gradle'
 }

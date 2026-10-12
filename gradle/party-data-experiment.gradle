@@ -1,0 +1,30 @@
+// Development-only sources: never included in the plugin or shadowJar.
+sourceSets {
+	partyDataExperiment {
+		compileClasspath += sourceSets.main.output + configurations.testRuntimeClasspath
+		runtimeClasspath += sourceSets.main.output + configurations.testRuntimeClasspath
+	}
+	partyDataExperimentTest {
+		compileClasspath += sourceSets.partyDataExperiment.output + configurations.testRuntimeClasspath
+		runtimeClasspath += sourceSets.partyDataExperiment.output + configurations.testRuntimeClasspath
+	}
+}
+
+tasks.register('testPartyDataExperiment', Test) {
+	group = 'verification'
+	description = 'Run all plugin unit tests and the Party Data Service compatibility checks.'
+	testClassesDirs = sourceSets.test.output.classesDirs + sourceSets.partyDataExperimentTest.output.classesDirs
+	classpath = sourceSets.test.runtimeClasspath + sourceSets.partyDataExperimentTest.runtimeClasspath
+	systemProperty 'java.awt.headless', 'true'
+}
+
+tasks.register('runPartyDataExperiment', JavaExec) {
+	group = 'runelite'
+	description = 'Run Community Lootshare with an opt-in inventory-only Party Data Service probe.'
+	// Reuse the patched client and launch settings, without executing the normal run task.
+	dependsOn tasks.named('patchedRuneliteClientJar')
+	classpath = tasks.named('run', JavaExec).get().classpath + sourceSets.partyDataExperiment.output
+	mainClass.set('com.communitylootshare.experiment.PartyDataExperimentLauncher')
+	jvmArgs '-ea'
+	args '--developer-mode', '--debug'
+}
